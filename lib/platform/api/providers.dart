@@ -29,7 +29,7 @@ import 'resources/units_api.dart';
 /// provider directly.
 const _defaultApiUrl = String.fromEnvironment(
   'KISE_API_URL',
-  defaultValue: 'https://kise-backend-eee2d4b0336e.herokuapp.com',
+  defaultValue: 'https://kise-app-1d266401bf6a.herokuapp.com',
 );
 
 final apiConfigProvider = Provider<ApiConfig>(
