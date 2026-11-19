@@ -29,8 +29,8 @@ class AppSettings {
   final Language language;
   final String currency;
 
-  /// Optional. Zero means "no budget set", which the dashboard treats as "don't show a target"
-  /// rather than "your target is nothing".
+  /// A budget kept on the device by older versions, before budgets lived on the server. Uploaded
+  /// once on the next sign-in and then cleared; nothing else reads it. Zero means none.
   final int monthlyBudgetMinor;
 
   /// The colour palette. Purely cosmetic, so it lives with the other personal preferences.
@@ -107,6 +107,22 @@ class SettingsController extends Notifier<AppSettings> {
 
   void setLanguage(Language language) => _update(state.copyWith(language: language));
 
+  /// Take the server profile's name, calendar, language and currency. Theme stays as it is.
+  void applyProfile({
+    required String ownerName,
+    required CalendarKind calendar,
+    required Language language,
+    required String currency,
+  }) =>
+      _update(state.copyWith(
+        ownerName: ownerName,
+        calendar: calendar,
+        language: language,
+        currency: currency.toUpperCase(),
+      ));
+
+  /// The currency before an account exists — the choice sent with registration. After that the
+  /// account's currency comes from the server and cannot be changed here.
   void setCurrency(String currency) =>
       _update(state.copyWith(currency: currency.toUpperCase()));
 

@@ -19,10 +19,14 @@ class SpendSummaryCard extends StatelessWidget {
     super.key,
     required this.month,
     required this.settings,
+    this.budget,
   });
 
   final MonthSummary month;
   final AppSettings settings;
+
+  /// The overall monthly budget, or null when none is set.
+  final Money? budget;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +34,8 @@ class SpendSummaryCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final accent = theme.extension<KiseColors>()!.accent;
     final total = month.grandTotal;
+    // Labelled in the display currency, like every other figure on the dashboard.
+    final target = budget == null ? null : Money(budget!.minorUnits, total.currency);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
@@ -74,10 +80,10 @@ class SpendSummaryCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (settings.hasBudget) ...[
+              if (target != null) ...[
                 const SizedBox(width: 16),
                 BudgetRing(
-                  share: total.shareOf(settings.monthlyBudget),
+                  share: total.shareOf(target),
                   caption: settings.say('ከገደብ', 'of budget'),
                 ),
               ],
@@ -111,11 +117,11 @@ class SpendSummaryCard extends StatelessWidget {
               ),
             ],
           ),
-          if (settings.hasBudget) ...[
+          if (target != null) ...[
             const SizedBox(height: 18),
             const Divider(),
             const SizedBox(height: 14),
-            _BudgetLine(spent: total, budget: settings.monthlyBudget, settings: settings),
+            _BudgetLine(spent: total, budget: target, settings: settings),
           ],
         ],
       ),

@@ -337,11 +337,16 @@ Future<void> _settle(
   OccurrenceDto occurrence,
   AppSettings settings,
 ) async {
-  final amountMinor = await showDialog<int>(
+  final paid = await showDialog<({int amountMinor, DateTime paidOn})>(
     context: context,
-    builder: (_) => _SettleDialog(occurrence: occurrence, settings: settings),
+    builder: (_) => _SettleDialog(
+      occurrence: occurrence,
+      settings: settings,
+      today: ref.read(todayProvider),
+    ),
   );
-  if (amountMinor == null || !context.mounted) return;
+  if (paid == null || !context.mounted) return;
+  final amountMinor = paid.amountMinor;
   await _run(
     context,
     ref,
@@ -349,6 +354,7 @@ Future<void> _settle(
           occurrence.fixedExpenseId,
           occurrence.period,
           amountMinor: amountMinor == occurrence.amount.minorUnits ? null : amountMinor,
+          settledOn: _isoDate(paid.paidOn),
         ),
     done: settings.say('${occurrence.title} ተከፍሏል', '${occurrence.title} marked as paid'),
   );
@@ -483,12 +489,26 @@ Future<void> _showActions(
   }
 }
 
-/// Ask what was actually paid, prefilled with the committed amount.
+String _isoDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-'
+    '${d.day.toString().padLeft(2, '0')}';
+
+/// "ነሐሴ 29, 2018" or "September 4, 2026", in the calendar the owner reads.
+String _fullDate(DateTime d, AppSettings settings) {
+  if (settings.calendar == CalendarKind.ethiopian) {
+    return EthiopianDate.fromGregorian(d).format(locale: settings.language.wire);
+  }
+  final names = settings.isAmharic ? gregorianMonthNamesAm : gregorianMonthNamesEn;
+  return '${names[d.month - 1]} ${d.day}, ${d.year}';
+}
+
+/// Ask what was actually paid and when: prefilled with the committed amount and today.
 class _SettleDialog extends StatefulWidget {
-  const _SettleDialog({required this.occurrence, required this.settings});
+  const _SettleDialog({required this.occurrence, required this.settings, required this.today});
 
   final OccurrenceDto occurrence;
   final AppSettings settings;
+  final DateTime today;
 
   @override
   State<_SettleDialog> createState() => _SettleDialogState();
@@ -496,6 +516,7 @@ class _SettleDialog extends StatefulWidget {
 
 class _SettleDialogState extends State<_SettleDialog> {
   late final TextEditingController _amount;
+  late DateTime _paidOn = widget.today;
   String? _error;
 
   @override
@@ -519,7 +540,7 @@ class _SettleDialogState extends State<_SettleDialog> {
       setState(() => _error = widget.settings.say('ትክክለኛ መጠን ያስገቡ', 'Enter a valid amount'));
       return;
     }
-    Navigator.of(context).pop(Money.fromMajor(value).minorUnits);
+    Navigator.of(context).pop((amountMinor: Money.fromMajor(value).minorUnits, paidOn: _paidOn));
   }
 
   @override
@@ -527,17 +548,45 @@ class _SettleDialogState extends State<_SettleDialog> {
     final settings = widget.settings;
     return AlertDialog(
       title: Text(settings.say('${widget.occurrence.title} ተከፍሏል', 'Mark ${widget.occurrence.title} paid')),
-      content: TextField(
-        key: const Key('settle-amount'),
-        controller: _amount,
-        autofocus: true,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(
-          labelText: settings.say('የተከፈለው መጠን', 'Amount paid'),
-          suffixText: widget.occurrence.amount.currency,
-          errorText: _error,
-        ),
-        onSubmitted: (_) => _confirm(),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            key: const Key('settle-amount'),
+            controller: _amount,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: settings.say('የተከፈለው መጠን', 'Amount paid'),
+              suffixText: widget.occurrence.amount.currency,
+              errorText: _error,
+            ),
+            onSubmitted: (_) => _confirm(),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            key: const Key('settle-date'),
+            onTap: () async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: _paidOn,
+                firstDate: DateTime(2000),
+                // A payment cannot be recorded in the future.
+                lastDate: widget.today,
+              );
+              if (picked != null) {
+                setState(() => _paidOn = DateTime.utc(picked.year, picked.month, picked.day));
+              }
+            },
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: settings.say('የተከፈለበት ቀን', 'Paid on'),
+                prefixIcon: const Icon(Icons.event_available_outlined),
+              ),
+              child: Text(_fullDate(_paidOn, settings), key: const Key('settle-date-label')),
+            ),
+          ),
+        ],
       ),
       actions: [
         TextButton(

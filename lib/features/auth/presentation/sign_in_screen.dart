@@ -4,7 +4,8 @@
 /// promise, and the form lives in a sheet that rises from the bottom (or floats, on a wide window).
 /// Signing in needs email + password; registering also needs a display name and adopts the
 /// calendar/language the person has already chosen in Settings, so their first expense is in the
-/// calendar they think in. Errors from the API (a wrong password, an email already taken) surface
+/// calendar they think in, and asks which currency the account keeps (fixed from then on, because
+/// every amount is written in it). Errors from the API (a wrong password, an email already taken) surface
 /// inline via the [SessionController]'s async state.
 library;
 
@@ -16,6 +17,8 @@ import '../../../platform/session/session_controller.dart';
 import '../../../platform/settings.dart';
 import '../../../platform/theme.dart';
 import '../../../shared/widgets/kise_logo.dart';
+import '../../../shared/widgets/option_card.dart';
+import '../../../shared_kernel/money.dart';
 import '../../../shared/widgets/reveal.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
@@ -218,6 +221,50 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             validator: (v) => (v == null || v.length < 8)
                 ? settings.say('ቢያንስ 8 ፊደላት', 'At least 8 characters')
                 : null,
+          ),
+          AnimatedSize(
+            duration: _motion,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _registering
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Column(
+                      key: const Key('signin-currency'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          settings.say('የመለያው ገንዘብ', 'Account currency'),
+                          style: theme.textTheme.labelLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final code in supportedCurrencies)
+                              ChoiceChipPill(
+                                key: Key('signin-currency-$code'),
+                                label: code,
+                                selected: settings.currency == code,
+                                onTap: () =>
+                                    ref.read(settingsProvider.notifier).setCurrency(code),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          settings.say(
+                            'በኋላ መቀየር አይቻልም።',
+                            'This cannot be changed later.',
+                          ),
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
           ),
           AnimatedSize(
             duration: _motion,

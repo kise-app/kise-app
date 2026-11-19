@@ -20,6 +20,7 @@ import '../../../shared/widgets/gradient_action_button.dart';
 import '../../../shared/widgets/reveal.dart';
 import '../../expenses/presentation/expense_form_sheet.dart';
 import '../../item_usage/presentation/item_usage_chart.dart';
+import '../../../shared_kernel/money.dart';
 import '../month_summary.dart';
 import 'widgets/category_card.dart';
 import 'widgets/daily_chart_card.dart';
@@ -40,6 +41,7 @@ class DashboardScreen extends ConsumerWidget {
     final today = ref.watch(todayProvider);
     final summary = ref.watch(monthSummaryProvider);
     final itemUsage = ref.watch(itemUsageProvider).valueOrNull;
+    final budget = ref.watch(overallBudgetProvider);
     final todayDay = period.dayOf(today);
 
     final dto = summary.valueOrNull;
@@ -66,7 +68,7 @@ class DashboardScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Reveal(
                         order: 0,
-                        child: SpendSummaryCard(month: month, settings: settings),
+                        child: SpendSummaryCard(month: month, settings: settings, budget: budget),
                       ),
                     ),
                   ],
@@ -93,6 +95,7 @@ class DashboardScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
               child: Column(
                 children: [
+                  _BudgetAlerts(month: month, budget: budget, settings: settings),
                   Reveal(
                     order: 1,
                     child: DailyChartCard(
@@ -151,6 +154,108 @@ class _LoadError extends StatelessWidget {
         leading: Icon(Icons.cloud_off_outlined, color: scheme.onErrorContainer),
         title: Text(message, style: TextStyle(color: scheme.onErrorContainer)),
         trailing: TextButton(onPressed: onRetry, child: Text(retryLabel)),
+      ),
+    );
+  }
+}
+
+/// One line per budget at 80% or more — the month overall, and each category with a limit. Hidden
+/// when nothing is close.
+class _BudgetAlerts extends StatelessWidget {
+  const _BudgetAlerts({required this.month, required this.budget, required this.settings});
+
+  final MonthSummary month;
+  final Money? budget;
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = <(BudgetLevel, String)>[];
+    String money(int minor) => Money(minor, month.currency).formatRounded();
+    int percent(int spent, int limit) => (spent * 100 / limit).round();
+
+    final overall = budget;
+    if (overall != null) {
+      final spent = month.grandTotal.minorUnits;
+      final level = BudgetLevel.of(spent, overall.minorUnits);
+      if (level != BudgetLevel.fine) {
+        lines.add((
+          level,
+          level == BudgetLevel.over
+              ? settings.say(
+                  'የወሩን ገደብ በ${money(spent - overall.minorUnits)} አልፈዋል',
+                  'Over the monthly budget by ${money(spent - overall.minorUnits)}',
+                )
+              : settings.say(
+                  'የወሩን ገደብ ${percent(spent, overall.minorUnits)}% ተጠቅመዋል',
+                  '${percent(spent, overall.minorUnits)}% of the monthly budget used',
+                ),
+        ));
+      }
+    }
+    for (final category in month.categoriesBySize) {
+      final limit = category.budgetMinor;
+      if (limit == null) continue;
+      final level = BudgetLevel.of(category.totalMinor, limit);
+      if (level == BudgetLevel.fine) continue;
+      final name = category.label(settings.isAmharic);
+      lines.add((
+        level,
+        level == BudgetLevel.over
+            ? settings.say(
+                '$name ከገደቡ በ${money(category.totalMinor - limit)} አልፏል',
+                '$name is ${money(category.totalMinor - limit)} over its limit',
+              )
+            : settings.say(
+                '$name ከገደቡ ${percent(category.totalMinor, limit)}% ደርሷል',
+                '$name is at ${percent(category.totalMinor, limit)}% of its limit',
+              ),
+      ));
+    }
+    if (lines.isEmpty) return const SizedBox.shrink();
+
+    final scheme = Theme.of(context).colorScheme;
+    final anyOver = lines.any((line) => line.$1 == BudgetLevel.over);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Card(
+        key: const Key('budget-alerts'),
+        margin: EdgeInsets.zero,
+        color: anyOver ? scheme.errorContainer : scheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (level, text) in lines)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Icon(
+                        level == BudgetLevel.over
+                            ? Icons.error_outline_rounded
+                            : Icons.warning_amber_rounded,
+                        size: 18,
+                        color: anyOver ? scheme.onErrorContainer : scheme.onTertiaryContainer,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            color:
+                                anyOver ? scheme.onErrorContainer : scheme.onTertiaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

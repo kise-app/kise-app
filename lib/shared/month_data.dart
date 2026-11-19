@@ -194,3 +194,37 @@ void invalidateMonthData(WidgetRef ref) {
   ref.invalidate(itemUsageProvider);
   ref.invalidate(budgetsProvider);
 }
+
+/// Older versions kept the monthly budget on the device. Upload it once — unless the account
+/// already has one — then forget the local copy, so the server is the only source from now on.
+Future<void> uploadLegacyBudget(WidgetRef ref) async {
+  final local = ref.read(settingsProvider).monthlyBudgetMinor;
+  if (local <= 0) return;
+  final api = ref.read(budgetsApiProvider);
+  try {
+    final existing = await api.list();
+    if (!existing.any((b) => b.isOverall)) await api.setOverall(local);
+    ref.read(settingsProvider.notifier).clearBudget();
+    ref.invalidate(budgetsProvider);
+  } on ApiException {
+    // Offline or refused: keep the local copy and try again next launch.
+  }
+}
+
+/// How close a spend is to its limit, for colouring and alerts.
+enum BudgetLevel {
+  fine,
+
+  /// 80% or more.
+  near,
+
+  /// Over the limit.
+  over;
+
+  static BudgetLevel of(int spentMinor, int budgetMinor) {
+    if (budgetMinor <= 0) return BudgetLevel.fine;
+    if (spentMinor > budgetMinor) return BudgetLevel.over;
+    if (spentMinor * 5 >= budgetMinor * 4) return BudgetLevel.near;
+    return BudgetLevel.fine;
+  }
+}

@@ -13,6 +13,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api.dart';
+import 'profile_sync.dart';
 
 /// The three states the session can be in.
 sealed class SessionState {
@@ -47,6 +48,7 @@ class SessionController extends AsyncNotifier<SessionState> {
     }
     try {
       final profile = await _auth.me();
+      ref.read(profileSyncProvider).apply(profile);
       return SignedIn(profile);
     } on ApiException {
       await _auth.signOut();
@@ -58,6 +60,7 @@ class SessionController extends AsyncNotifier<SessionState> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final result = await _auth.login(email: email, password: password);
+      ref.read(profileSyncProvider).apply(result.owner);
       return SignedIn(result.owner);
     });
   }
@@ -80,11 +83,13 @@ class SessionController extends AsyncNotifier<SessionState> {
         language: language,
         currency: currency,
       );
+      ref.read(profileSyncProvider).apply(result.owner);
       return SignedIn(result.owner);
     });
   }
 
   Future<void> signOut() async {
+    ref.read(profileSyncProvider).reset();
     await _auth.signOut();
     state = const AsyncData(SignedOut());
   }

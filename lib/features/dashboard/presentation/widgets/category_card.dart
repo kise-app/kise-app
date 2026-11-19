@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../../platform/api/api.dart';
 import '../../../../platform/settings.dart';
 import '../../../../shared/category_visuals.dart';
+import '../../../../shared/month_data.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared_kernel/money.dart';
 import '../../month_summary.dart';
@@ -119,6 +120,7 @@ class _CategoryRow extends StatelessWidget {
                     settings.say('ቋሚ ወጪን ያካትታል', 'includes fixed'),
                     style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                   ),
+                if (category.budgetMinor != null) _LimitBar(category: category, total: total),
               ],
             ),
           ),
@@ -138,6 +140,54 @@ class _CategoryRow extends StatelessWidget {
                 style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "4,500 of 5,000" with a thin bar that turns amber at 80% and red past the limit.
+class _LimitBar extends StatelessWidget {
+  const _LimitBar({required this.category, required this.total});
+
+  final CategorySpendDto category;
+  final Money total;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final limit = category.budgetMinor!;
+    final level = BudgetLevel.of(category.totalMinor, limit);
+    final color = switch (level) {
+      BudgetLevel.over => scheme.error,
+      BudgetLevel.near => scheme.tertiary,
+      BudgetLevel.fine => scheme.primary,
+    };
+    final spent = Money(category.totalMinor, total.currency).formatRounded(withCurrency: false);
+    final cap = Money(limit, total.currency).formatRounded(withCurrency: false);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              key: Key('limit-${category.categoryId}'),
+              value: (category.totalMinor / limit).clamp(0.0, 1.0),
+              minHeight: 5,
+              color: color,
+              backgroundColor: color.withValues(alpha: 0.15),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '$spent / $cap',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: level == BudgetLevel.fine ? scheme.onSurfaceVariant : color,
+            ),
           ),
         ],
       ),

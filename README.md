@@ -37,6 +37,9 @@ implementation drifts, one of the two suites fails.
 - The dashboard reads `GET /api/reports/summary` for the month in view; the Fixed tab reads
   `/api/fixed-expenses`. Month-keyed providers live in `shared/month_data.dart`, and anything that
   writes calls `invalidateMonthData` so every tab refreshes together.
+- The server owns the profile (name, calendar, language, currency) and budgets. `ProfileSync`
+  (`platform/session/profile_sync.dart`) copies the profile down at sign-in and pushes name,
+  calendar and language changes back. Theme stays on the device.
 - `todayProvider` is the single source of "now" — nothing else calls `DateTime.now()`, so tests can
   pin the date and every derived value follows.
 - Amharic renders from system fonts on iOS. Android coverage of Ethiopic is inconsistent, so a

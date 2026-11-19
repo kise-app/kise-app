@@ -188,8 +188,10 @@ CategorySpendDto spend(
   int dynamicMinor = 0,
   int committedMinor = 0,
   int expenseCount = 1,
+  int? budgetMinor,
 }) =>
     CategorySpendDto.fromJson({
+      'budget': budgetMinor == null ? null : _m(budgetMinor),
       'category_id': id,
       'name': name,
       'name_am': nameAm,
@@ -233,6 +235,7 @@ MonthlySummaryDto summaryOf({
           'dynamic': _m(c.dynamicMinor),
           'committed': _m(c.committedMinor),
           'expense_count': c.expenseCount,
+          'budget': c.budgetMinor == null ? null : _m(c.budgetMinor!),
         },
     ],
   });
@@ -266,6 +269,8 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
   final Map<String, int> settled = {};
   final List<String> calls = [];
   Map<String, Object?>? lastSchedule;
+  Map<String, Object?>? lastUpdate;
+  String? lastSettledOn;
 
   @override
   Future<List<FixedExpenseDto>> list() async => [...commitments];
@@ -316,6 +321,7 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
       'title': title,
       'amount_minor': amountMinor,
       'start_period': startPeriod,
+      'end_period': endPeriod,
       'due_day': dueDay,
       'note': note,
     };
@@ -337,6 +343,7 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
     bool clearEndPeriod = false,
   }) async {
     calls.add('update:$id');
+    lastUpdate = {'end_period': endPeriod, 'clear_end_period': clearEndPeriod};
     final index = commitments.indexWhere((c) => c.id == id);
     final old = commitments[index];
     commitments[index] = fixedExpense(id, title ?? old.title, amountMinor ?? old.amount.minorUnits,
@@ -378,6 +385,7 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
     String? settledOn,
   }) async {
     calls.add('settle:$id:${amountMinor ?? 'committed'}');
+    lastSettledOn = settledOn;
     final c = commitments.firstWhere((c) => c.id == id);
     settled[id] = amountMinor ?? c.amount.minorUnits;
     return (await occurrences(period)).occurrences.firstWhere((o) => o.fixedExpenseId == id);
@@ -427,11 +435,18 @@ FixedExpenseDto fixedExpense(
 }
 
 class FakeCategoriesApi implements CategoriesApi {
-  FakeCategoriesApi([this._items = const []]);
-  final List<CategoryDto> _items;
+  FakeCategoriesApi([List<CategoryDto> items = const [], this.inUse = const {}])
+      : items = [...items];
+
+  final List<CategoryDto> items;
+
+  /// Ids that expenses use: removing one archives it instead of deleting.
+  final Set<String> inUse;
+  final List<String> calls = [];
 
   @override
-  Future<List<CategoryDto>> list({bool includeArchived = false}) async => _items;
+  Future<List<CategoryDto>> list({bool includeArchived = false}) async =>
+      items.where((c) => includeArchived || !c.isArchived).toList();
 
   @override
   Future<CategoryDto> create({
@@ -439,19 +454,47 @@ class FakeCategoriesApi implements CategoriesApi {
     String? nameAm,
     String? color,
     String? icon,
-  }) async =>
-      throw UnimplementedError();
+  }) async {
+    calls.add('create:$name:${nameAm ?? ''}:${color ?? ''}:${icon ?? ''}');
+    final created = category('cat-new-${items.length}', name,
+        nameAm: nameAm, color: color ?? '#607D8B', icon: icon);
+    items.add(created);
+    return created;
+  }
 
   @override
   Future<CategoryDto> update(String id,
-          {String? name, String? nameAm, String? color, String? icon}) async =>
-      throw UnimplementedError();
+      {String? name, String? nameAm, String? color, String? icon}) async {
+    calls.add('update:$id:${name ?? '-'}:${nameAm ?? '-'}:${color ?? '-'}:${icon ?? '-'}');
+    final i = items.indexWhere((c) => c.id == id);
+    final old = items[i];
+    items[i] = category(id, name ?? old.name,
+        nameAm: nameAm ?? old.nameAm, color: color ?? old.color, icon: icon ?? old.icon);
+    return items[i];
+  }
 
   @override
-  Future<CategoryDto?> remove(String id) async => null;
+  Future<CategoryDto?> remove(String id) async {
+    calls.add('remove:$id');
+    final i = items.indexWhere((c) => c.id == id);
+    if (inUse.contains(id)) {
+      final old = items[i];
+      items[i] = category(id, old.name,
+          nameAm: old.nameAm, color: old.color, icon: old.icon, archived: true);
+      return items[i];
+    }
+    items.removeAt(i);
+    return null;
+  }
 
   @override
-  Future<CategoryDto> restore(String id) async => throw UnimplementedError();
+  Future<CategoryDto> restore(String id) async {
+    calls.add('restore:$id');
+    final i = items.indexWhere((c) => c.id == id);
+    final old = items[i];
+    items[i] = category(id, old.name, nameAm: old.nameAm, color: old.color, icon: old.icon);
+    return items[i];
+  }
 }
 
 class FakeUnitsApi implements UnitsApi {
@@ -484,13 +527,21 @@ class FakeItemsApi implements ItemsApi {
   Future<ItemDto?> remove(String id) async => null;
 }
 
-CategoryDto category(String id, String name, {String? nameAm}) => CategoryDto.fromJson({
+CategoryDto category(
+  String id,
+  String name, {
+  String? nameAm,
+  String color = '#607D8B',
+  String? icon,
+  bool archived = false,
+}) =>
+    CategoryDto.fromJson({
       'id': id,
       'name': name,
       'name_am': nameAm,
-      'color': '#607D8B',
-      'icon': null,
-      'is_archived': false,
+      'color': color,
+      'icon': icon,
+      'is_archived': archived,
       'is_default': false,
     });
 
@@ -584,6 +635,111 @@ ExpensePageDto pageOf(List<ExpenseDto> items, {int? totalAmountMinor}) => Expens
       },
     });
 
+/// In-memory budgets: the overall one under the key null, categories by id.
+class FakeBudgetsApi implements BudgetsApi {
+  FakeBudgetsApi([Map<String?, int>? initial]) : amounts = {...?initial};
+
+  final Map<String?, int> amounts;
+  final List<String> calls = [];
+
+  BudgetDto _dto(String? categoryId) => BudgetDto.fromJson({
+        'id': 'b-${categoryId ?? 'overall'}',
+        'category_id': categoryId,
+        'amount': _m(amounts[categoryId]!),
+      });
+
+  @override
+  Future<List<BudgetDto>> list() async => [for (final key in amounts.keys) _dto(key)];
+
+  @override
+  Future<BudgetDto> setOverall(int amountMinor) async {
+    calls.add('set:overall:$amountMinor');
+    amounts[null] = amountMinor;
+    return _dto(null);
+  }
+
+  @override
+  Future<void> clearOverall() async {
+    calls.add('clear:overall');
+    amounts.remove(null);
+  }
+
+  @override
+  Future<BudgetDto> setForCategory(String categoryId, int amountMinor) async {
+    calls.add('set:$categoryId:$amountMinor');
+    amounts[categoryId] = amountMinor;
+    return _dto(categoryId);
+  }
+
+  @override
+  Future<void> clearForCategory(String categoryId) async {
+    calls.add('clear:$categoryId');
+    amounts.remove(categoryId);
+  }
+}
+
+/// Records profile pushes and password changes; never touches the token store.
+class FakeAuthApi implements AuthApi {
+  FakeAuthApi({this.passwordError});
+
+  final ApiException? passwordError;
+  final List<Map<String, Object?>> updates = [];
+  final List<Map<String, String>> passwordChanges = [];
+
+  @override
+  Future<ProfileDto> updateMe({String? displayName, String? calendar, String? language}) async {
+    updates.add({'display_name': displayName, 'calendar': calendar, 'language': language});
+    return profile(
+      displayName: displayName ?? 'Test',
+      calendar: calendar ?? 'ethiopian',
+      language: language ?? 'am',
+    );
+  }
+
+  @override
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    if (passwordError != null) throw passwordError!;
+    passwordChanges.add({'current': currentPassword, 'new': newPassword});
+  }
+
+  @override
+  Future<ProfileDto> me() async => profile();
+
+  @override
+  Future<AuthResultDto> login({required String email, required String password}) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<AuthResultDto> register({
+    required String email,
+    required String password,
+    required String displayName,
+    String? calendar,
+    String? language,
+    String? currency,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> signOut() async {}
+}
+
+ProfileDto profile({
+  String displayName = 'Test',
+  String calendar = 'ethiopian',
+  String language = 'am',
+  String currency = 'ETB',
+}) =>
+    ProfileDto.fromJson({
+      'id': 'owner-1',
+      'email': 'test@example.com',
+      'display_name': displayName,
+      'calendar': calendar,
+      'language': language,
+      'currency': currency,
+      'registered_at': '2026-09-01T00:00:00+00:00',
+    });
+
 /// Provider overrides that replace the network-backed data sources with fakes, and force the
 /// session to signed-in so gated screens render.
 List<Override> fakeApiOverrides({
@@ -593,8 +749,12 @@ List<Override> fakeApiOverrides({
   FakeItemsApi? items,
   FakeMonthlySummaryApi? summary,
   FakeFixedExpensesApi? fixedExpenses,
+  FakeBudgetsApi? budgets,
+  FakeAuthApi? auth,
 }) =>
     [
+      budgetsApiProvider.overrideWithValue(budgets ?? FakeBudgetsApi()),
+      authApiProvider.overrideWithValue(auth ?? FakeAuthApi()),
       expensesApiProvider.overrideWithValue(expenses ?? FakeExpensesApi()),
       monthlySummaryApiProvider.overrideWithValue(summary ?? FakeMonthlySummaryApi()),
       fixedExpensesApiProvider.overrideWithValue(fixedExpenses ?? FakeFixedExpensesApi()),

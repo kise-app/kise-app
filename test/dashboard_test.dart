@@ -24,6 +24,7 @@ Widget _app({
   DateTime? today,
   AppSettings settings = const AppSettings(),
   FakeMonthlySummaryApi? summary,
+  FakeBudgetsApi? budgets,
 }) {
   return ProviderScope(
     overrides: [
@@ -31,7 +32,7 @@ Widget _app({
       settingsStoreProvider.overrideWithValue(InMemorySettingsStore(settings)),
       // Every tab is built eagerly inside the IndexedStack; fake the API so nothing fires real
       // network requests and leaves pending timers.
-      ...fakeApiOverrides(summary: summary),
+      ...fakeApiOverrides(summary: summary, budgets: budgets),
     ],
     child: MaterialApp(theme: buildTheme(), home: const AppShell()),
   );
@@ -221,11 +222,71 @@ void main() {
     testWidgets('a budget shows a progress bar with the target', (tester) async {
       // A separate test rather than re-pumping: a new ProviderScope over the same element tree
       // keeps the notifier's existing state, so the override would be ignored.
-      await tester.pumpWidget(
-        _app(settings: const AppSettings(monthlyBudgetMinor: 1500000)), // 15,000 ETB
-      );
+      await tester.pumpWidget(_app(budgets: FakeBudgetsApi({null: 1500000}))); // 15,000 ETB
+      await tester.pumpAndSettle();
       expect(find.byKey(const Key('budget-progress')), findsOneWidget);
       expect(_textOf(tester, 'budget-progress'), contains('15,000 ETB'));
+    });
+
+    testWidgets('a budget left on the device by an older version moves to the account',
+        (tester) async {
+      final budgets = FakeBudgetsApi();
+      final store = InMemorySettingsStore(const AppSettings(monthlyBudgetMinor: 1500000));
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          todayProvider.overrideWithValue(_fixedToday),
+          settingsStoreProvider.overrideWithValue(store),
+          ...fakeApiOverrides(budgets: budgets),
+        ],
+        child: MaterialApp(theme: buildTheme(), home: const AppShell()),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(budgets.calls, ['set:overall:1500000']);
+      expect(store.load().monthlyBudgetMinor, 0, reason: 'the local copy is forgotten');
+      expect(_textOf(tester, 'budget-progress'), contains('15,000 ETB'));
+    });
+
+    testWidgets('the legacy budget does not overwrite one the account already has',
+        (tester) async {
+      final budgets = FakeBudgetsApi({null: 900000});
+      await tester.pumpWidget(_app(
+        settings: const AppSettings(monthlyBudgetMinor: 1500000),
+        budgets: budgets,
+      ));
+      await tester.pumpAndSettle();
+      expect(budgets.calls, isEmpty);
+      expect(_textOf(tester, 'budget-progress'), contains('9,000 ETB'));
+    });
+
+    testWidgets('categories near or over their limit raise an alert', (tester) async {
+      await tester.pumpWidget(_app(
+        settings: const AppSettings(language: Language.english),
+        summary: FakeMonthlySummaryApi(
+          build: (period) => summaryOf(
+            daily: List.filled(period.lengthInDays, 0),
+            dynamicMinor: 950000,
+            categories: [
+              spend('c-food', 'Food', null, '#E53935', 'restaurant',
+                  dynamicMinor: 450000, budgetMinor: 500000),
+              spend('c-taxi', 'Transport', null, '#1E88E5', 'directions_bus',
+                  dynamicMinor: 500000, budgetMinor: 400000),
+            ],
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('budget-alerts')), findsOneWidget);
+      expect(find.text('Food is at 90% of its limit'), findsOneWidget);
+      expect(find.text('Transport is 1,000 ETB over its limit'), findsOneWidget);
+      expect(find.byKey(const Key('limit-c-food')), findsOneWidget);
+    });
+
+    testWidgets('no alert while every budget is comfortably under', (tester) async {
+      await tester.pumpWidget(_app(budgets: FakeBudgetsApi({null: 5000000})));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('budget-alerts')), findsNothing);
     });
 
     testWidgets('the currency setting is used throughout', (tester) async {
@@ -299,6 +360,7 @@ void main() {
       await _openSettings(tester);
 
       await tester.enterText(find.byKey(const Key('budget-field')), '12000');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.dashboard_outlined));
@@ -307,11 +369,14 @@ void main() {
     });
 
     testWidgets('clearing the budget field removes it again', (tester) async {
-      await tester.pumpWidget(_app(settings: const AppSettings(monthlyBudgetMinor: 1200000)));
+      final budgets = FakeBudgetsApi({null: 1200000});
+      await tester.pumpWidget(_app(budgets: budgets));
       await _openSettings(tester);
 
       await tester.enterText(find.byKey(const Key('budget-field')), '');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
+      expect(budgets.calls, ['clear:overall']);
 
       await tester.tap(find.byIcon(Icons.dashboard_outlined));
       await tester.pumpAndSettle();

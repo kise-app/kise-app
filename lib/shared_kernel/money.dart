@@ -9,6 +9,9 @@ import 'package:intl/intl.dart';
 const int minorUnitsPerMajor = 100;
 const String defaultCurrency = 'ETB';
 
+/// The currencies an account can be opened in.
+const supportedCurrencies = ['ETB', 'USD', 'EUR', 'GBP', 'AED'];
+
 class CurrencyMismatch implements Exception {
   const CurrencyMismatch(this.left, this.right);
 

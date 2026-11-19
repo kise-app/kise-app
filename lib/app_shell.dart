@@ -12,6 +12,7 @@ import 'features/expenses/presentation/expenses_screen.dart';
 import 'features/fixed_expenses/presentation/fixed_expenses_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'platform/settings.dart';
+import 'shared/month_data.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
@@ -22,6 +23,15 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Signed in by now: move a budget left on the device by an older version to the account.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) uploadLegacyBudget(ref);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

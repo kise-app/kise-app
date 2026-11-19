@@ -39,4 +39,13 @@ const Map<String, IconData> _icons = {
   'local_gas_station': Icons.local_gas_station_rounded,
 };
 
+/// The icon names offered when creating or editing a category, in picker order.
+List<String> get categoryIconNames => _icons.keys.toList(growable: false);
+
+/// Colours offered in the category editor: the defaults' colours plus a few more, all `#RRGGBB`.
+const categoryPalette = [
+  '#E53935', '#FB8C00', '#FDD835', '#43A047', '#00897B', '#00ACC1',
+  '#1E88E5', '#3949AB', '#8E24AA', '#D81B60', '#6D4C41', '#607D8B',
+];
+
 IconData categoryIcon(String? name) => _icons[name?.trim()] ?? Icons.category_rounded;

@@ -4,6 +4,10 @@
 /// Ethiopian months have 30 days, and a due day past the end of a short month such as ጳጉሜን or
 /// February is pulled back to its last day by the server). A new commitment starts in the month
 /// being viewed, in the calendar the user is viewing it in — which becomes its anchor calendar.
+///
+/// An optional **last month** ends a commitment that does not run forever (a 12-month lease, a
+/// school year). It is stepped month by month in the anchor calendar and can never precede the
+/// start; the server additionally refuses to end before a month that is already paid.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,6 +17,7 @@ import '../../../platform/api/api.dart';
 import '../../../platform/settings.dart';
 import '../../../shared/month_data.dart';
 import '../../../shared_kernel/money.dart';
+import '../../../shared_kernel/period.dart';
 import '../../expenses/presentation/expense_providers.dart' show categoriesProvider;
 
 /// Show the form. Pass [commitment] to edit instead of schedule. Returns true on save.
@@ -41,6 +46,9 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
   final _note = TextEditingController();
   String? _categoryId;
   int _dueDay = 1;
+  bool _hasEnd = false;
+  late Period _start;
+  late Period _end;
   bool _submitting = false;
   String? _error;
 
@@ -50,6 +58,10 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
   void initState() {
     super.initState();
     final commitment = widget.commitment;
+    _start = commitment?.startPeriod ?? ref.read(selectedPeriodProvider);
+    _hasEnd = commitment?.endPeriod != null;
+    // A year is the common case for a commitment with an end: offer it as the starting point.
+    _end = commitment?.endPeriod ?? _start.shift(_start.calendar.monthsPerYear - 1);
     if (commitment != null) {
       _title.text = commitment.title;
       final major = commitment.amount.majorUnits;
@@ -91,7 +103,8 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
           categoryId: _categoryId!,
           title: _title.text.trim(),
           amountMinor: amountMinor,
-          startPeriod: ref.read(selectedPeriodProvider),
+          startPeriod: _start,
+          endPeriod: _hasEnd ? _end : null,
           dueDay: _dueDay,
           note: note.isEmpty ? null : note,
         );
@@ -103,6 +116,8 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
           categoryId: _categoryId != commitment.categoryId ? _categoryId : null,
           dueDay: _dueDay,
           note: note,
+          endPeriod: _hasEnd && _end != commitment.endPeriod ? _end : null,
+          clearEndPeriod: !_hasEnd && commitment.endPeriod != null,
         );
       }
       invalidateMonthData(ref);
@@ -117,7 +132,6 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
-    final period = ref.watch(selectedPeriodProvider);
     final categories = ref.watch(categoriesProvider);
     final theme = Theme.of(context);
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
@@ -141,8 +155,8 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
                 const SizedBox(height: 4),
                 Text(
                   settings.say(
-                    'ከ${period.label(settings.language)} ጀምሮ በየወሩ',
-                    'Every month from ${period.label(settings.language)}',
+                    'ከ${_start.label(settings.language)} ጀምሮ በየወሩ',
+                    'Every month from ${_start.label(settings.language)}',
                   ),
                   key: const Key('fixed-start-label'),
                   style: theme.textTheme.bodySmall?.copyWith(
@@ -224,6 +238,53 @@ class _FixedExpenseFormSheetState extends ConsumerState<FixedExpenseFormSheet> {
                 ],
                 onChanged: (v) => setState(() => _dueDay = v ?? 1),
               ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                key: const Key('fixed-has-end'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(settings.say('የሚያበቃበት ወር አለው', 'Ends after a set month')),
+                subtitle: Text(
+                  settings.say('ለምሳሌ የአንድ ዓመት ውል', 'e.g. a one-year lease'),
+                  style: theme.textTheme.bodySmall,
+                ),
+                value: _hasEnd,
+                onChanged: (v) => setState(() => _hasEnd = v),
+              ),
+              if (_hasEnd)
+                InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: settings.say('የመጨረሻው ወር', 'Last month'),
+                    prefixIcon: const Icon(Icons.event_busy_outlined),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        key: const Key('fixed-end-previous'),
+                        tooltip: settings.say('ያለፈው ወር', 'Previous month'),
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.chevron_left_rounded),
+                        onPressed: _end > _start
+                            ? () => setState(() => _end = _end.previous)
+                            : null,
+                      ),
+                      Expanded(
+                        child: Text(
+                          _end.label(settings.language),
+                          key: const Key('fixed-end-label'),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        key: const Key('fixed-end-next'),
+                        tooltip: settings.say('የሚቀጥለው ወር', 'Next month'),
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.chevron_right_rounded),
+                        onPressed: () => setState(() => _end = _end.next),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 14),
               TextFormField(
                 key: const Key('fixed-note'),

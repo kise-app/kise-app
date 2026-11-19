@@ -1,23 +1,30 @@
 /// Personal settings.
 ///
 /// Ordered by consequence: who you are, then the calendar and language that change every screen,
-/// then currency and budget. The two big choices are cards rather than segmented buttons — each one
-/// shows *today's date in that calendar*, so the effect of the choice is visible before making it.
+/// then currency and budget, then the account (categories, password). The two big choices are
+/// cards rather than segmented buttons — each one shows *today's date in that calendar*, so the
+/// effect of the choice is visible before making it.
+///
+/// Name, calendar and language are saved to the account (see `ProfileSync`); theme stays on this
+/// device; the budget lives on the server.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../platform/api/api.dart';
 import '../../../platform/session/session_controller.dart';
 import '../../../platform/settings.dart';
 import '../../../platform/theme.dart';
+import '../../../shared/month_data.dart';
 import '../../../shared/widgets/option_card.dart';
 import '../../../shared_kernel/ethiopian_date.dart';
 import '../../../shared_kernel/money.dart';
 import '../../../shared_kernel/period.dart';
+import '../../categories/presentation/categories_screen.dart';
+import 'change_password_dialog.dart';
 
-const supportedCurrencies = ['ETB', 'USD', 'EUR', 'GBP', 'AED'];
 const budgetShortcutsMajor = [5000, 10000, 15000, 25000];
 
 class SettingsScreen extends ConsumerWidget {
@@ -49,6 +56,8 @@ class SettingsScreen extends ConsumerWidget {
                 _CurrencyPicker(settings: settings),
                 const SizedBox(height: 24),
                 _BudgetPicker(settings: settings),
+                const SizedBox(height: 24),
+                _AccountSection(settings: settings),
                 const SizedBox(height: 32),
                 _SignOutButton(settings: settings),
                 const SizedBox(height: 20),
@@ -569,30 +578,35 @@ class _ThemeSwatch extends StatelessWidget {
   }
 }
 
-class _CurrencyPicker extends ConsumerWidget {
+/// The account currency, shown rather than chosen: it is fixed when the account is opened, because
+/// every amount already recorded is written in it.
+class _CurrencyPicker extends StatelessWidget {
   const _CurrencyPicker({required this.settings});
 
   final AppSettings settings;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.read(settingsProvider.notifier);
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Column(
       key: const Key('currency-selector'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionTitle(title: settings.say('ገንዘብ', 'Currency')),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final code in supportedCurrencies)
-              ChoiceChipPill(
-                label: code,
-                selected: settings.currency == code,
-                onTap: () => controller.setCurrency(code),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.payments_outlined),
+            title: Text(settings.currency, key: const Key('account-currency')),
+            subtitle: Text(
+              settings.say(
+                'መለያው ሲከፈት የተመረጠ። የተመዘገቡ መጠኖች በዚህ ስለተጻፉ አይቀየርም።',
+                'Chosen when the account was opened. It stays fixed because your recorded '
+                    'amounts are written in it.',
               ),
-          ],
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
         ),
       ],
     );
@@ -608,12 +622,13 @@ class _BudgetPicker extends ConsumerStatefulWidget {
   ConsumerState<_BudgetPicker> createState() => _BudgetPickerState();
 }
 
+/// The overall monthly budget, kept on the server so every device shows the same target. A
+/// shortcut chip applies at once; a typed amount applies on "done" or the save button.
 class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
-  late final TextEditingController _field = TextEditingController(
-    text: widget.settings.hasBudget
-        ? widget.settings.monthlyBudget.majorUnits.round().toString()
-        : '',
-  );
+  final TextEditingController _field = TextEditingController();
+  bool _edited = false;
+  bool _saving = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -621,22 +636,44 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
     super.dispose();
   }
 
-  void _apply(String text) {
-    final controller = ref.read(settingsProvider.notifier);
-    final major = double.tryParse(text);
+  Future<void> _write(Future<void> Function(BudgetsApi api) action) async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await action(ref.read(budgetsApiProvider));
+      ref.invalidate(budgetsProvider);
+      ref.invalidate(monthSummaryProvider);
+      _edited = false;
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _apply(String text, {required bool hasBudget}) async {
+    final major = double.tryParse(text.trim());
     if (major == null || major <= 0) {
-      controller.clearBudget();
+      if (hasBudget) await _write((api) => api.clearOverall());
       return;
     }
-    controller.setMonthlyBudgetMinor(
-      Money.fromMajor(major, widget.settings.currency).minorUnits,
-    );
+    final minor = Money.fromMajor(major, widget.settings.currency).minorUnits;
+    await _write((api) => api.setOverall(minor).then((_) {}));
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = widget.settings;
     final theme = Theme.of(context);
+    final budget = ref.watch(overallBudgetProvider);
+    final loading = ref.watch(budgetsProvider).isLoading;
+    // Show the server's figure until the person starts typing their own.
+    if (!_edited) {
+      final text = budget == null ? '' : budget.majorUnits.round().toString();
+      if (_field.text != text) _field.text = text;
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -644,8 +681,9 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
         _SectionTitle(
           title: settings.say('የወሩ ገደብ', 'Monthly budget'),
           hint: settings.say(
-            'ካልፈለጉ ባዶ ይተዉት፤ ማጠቃለያው ላይ አይታይም።',
-            'Leave it empty and the summary will not show a target.',
+            'ካልፈለጉ ባዶ ይተዉት፤ ማጠቃለያው ላይ አይታይም። የምድብ ገደቦች በምድቦች ውስጥ ይዘጋጃሉ።',
+            'Leave it empty and the summary will not show a target. Category limits are set '
+                'under Categories.',
           ),
         ),
         Wrap(
@@ -656,20 +694,23 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
               ChoiceChipPill(
                 label: Money.fromMajor(amount, settings.currency)
                     .formatRounded(withCurrency: false),
-                selected: settings.monthlyBudgetMinor ==
+                selected: budget?.minorUnits ==
                     Money.fromMajor(amount, settings.currency).minorUnits,
                 onTap: () {
-                  _field.text = amount.toString();
-                  _apply(_field.text);
+                  _edited = false;
+                  _write((api) => api
+                      .setOverall(Money.fromMajor(amount, settings.currency).minorUnits)
+                      .then((_) {}));
                 },
               ),
-            if (settings.hasBudget)
+            if (budget != null)
               ChoiceChipPill(
+                key: const Key('budget-clear'),
                 label: settings.say('አጥፋ', 'Clear'),
                 selected: false,
                 onTap: () {
-                  _field.clear();
-                  ref.read(settingsProvider.notifier).clearBudget();
+                  _edited = false;
+                  _write((api) => api.clearOverall());
                 },
               ),
           ],
@@ -679,20 +720,35 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
           key: const Key('budget-field'),
           controller: _field,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          textInputAction: TextInputAction.done,
           inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
           decoration: InputDecoration(
             labelText: settings.say('የራስዎ ገደብ', 'Custom amount'),
             prefixIcon: const Icon(Icons.savings_outlined),
             suffixText: settings.currency,
+            errorText: _error,
+            suffixIcon: _saving || loading
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox.square(
+                        dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : IconButton(
+                    key: const Key('budget-save'),
+                    tooltip: settings.say('አስቀምጥ', 'Save'),
+                    icon: const Icon(Icons.check_rounded),
+                    onPressed: () => _apply(_field.text, hasBudget: budget != null),
+                  ),
           ),
-          onChanged: _apply,
+          onChanged: (_) => _edited = true,
+          onSubmitted: (text) => _apply(text, hasBudget: budget != null),
         ),
-        if (settings.hasBudget) ...[
+        if (budget != null) ...[
           const SizedBox(height: 8),
           Text(
             settings.say(
-              'ገደብ: ${settings.monthlyBudget.formatRounded()}',
-              'Budget: ${settings.monthlyBudget.formatRounded()}',
+              'ገደብ: ${Money(budget.minorUnits, settings.currency).formatRounded()}',
+              'Budget: ${Money(budget.minorUnits, settings.currency).formatRounded()}',
             ),
             key: const Key('budget-summary'),
             style: theme.textTheme.bodySmall?.copyWith(
@@ -701,6 +757,54 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// Categories, and the password: things about the account rather than the screen.
+class _AccountSection extends ConsumerWidget {
+  const _AccountSection({required this.settings});
+
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(title: settings.say('መለያ', 'Account')),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: [
+              ListTile(
+                key: const Key('open-categories'),
+                leading: const Icon(Icons.category_outlined),
+                title: Text(settings.say('ምድቦች', 'Categories')),
+                subtitle: Text(settings.say(
+                  'ጨምር፣ ስም ቀይር፣ ቀለም እና የወር ገደብ',
+                  'Add, rename, colour and monthly limits',
+                )),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const CategoriesScreen()),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                key: const Key('change-password'),
+                leading: const Icon(Icons.lock_reset_rounded),
+                title: Text(settings.say('የይለፍ ቃል ቀይር', 'Change password')),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const ChangePasswordDialog(),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

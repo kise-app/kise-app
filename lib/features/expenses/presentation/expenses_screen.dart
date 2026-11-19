@@ -206,6 +206,7 @@ class _SearchAndFiltersState extends ConsumerState<_SearchAndFilters> {
                       padding: const EdgeInsets.only(right: 6),
                       child: InputChip(
                         key: Key('active-filter-$id'),
+                        deleteIcon: const Icon(Icons.close_rounded, size: 18),
                         label: Text(names[id] ?? settings.say('ምድብ', 'Category')),
                         onDeleted: () => _setFilter(
                           (f) => f.copyWith(categoryIds: {...f.categoryIds}..remove(id)),
@@ -217,6 +218,7 @@ class _SearchAndFiltersState extends ConsumerState<_SearchAndFilters> {
                       padding: const EdgeInsets.only(right: 6),
                       child: InputChip(
                         key: Key('active-filter-$method'),
+                        deleteIcon: const Icon(Icons.close_rounded, size: 18),
                         label: Text(paymentMethodLabel(method, settings)),
                         onDeleted: () => _setFilter(
                           (f) => f.copyWith(paymentMethods: {...f.paymentMethods}..remove(method)),
