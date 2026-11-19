@@ -19,7 +19,7 @@ class AppSettings {
     this.currency = defaultCurrency,
     this.monthlyBudgetMinor = 0,
     this.theme = AppTheme.forest,
-    this.themeMode = AppThemeMode.system,
+    this.themeMode = AppThemeMode.light,
   });
 
   /// Shown in the greeting. Empty until the person sets it, and the UI adapts rather than

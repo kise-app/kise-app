@@ -35,7 +35,8 @@ enum AppThemeMode {
 
   static AppThemeMode parse(String? value) => AppThemeMode.values.firstWhere(
         (mode) => mode.wire == value?.trim().toLowerCase(),
-        orElse: () => AppThemeMode.system,
+        // Light unless the person chose otherwise: a new install, or a value that no longer parses.
+        orElse: () => AppThemeMode.light,
       );
 }
 

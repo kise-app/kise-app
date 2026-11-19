@@ -480,9 +480,11 @@ void main() {
       expect(AppTheme.parse('Wine'), AppTheme.wine);
     });
 
-    test('an unknown stored theme mode falls back to system', () {
-      expect(AppThemeMode.parse('night'), AppThemeMode.system);
-      expect(AppThemeMode.parse(null), AppThemeMode.system);
+    test('the app starts light, and an unknown stored theme mode falls back to light', () {
+      expect(const AppSettings().themeMode, AppThemeMode.light);
+      expect(AppThemeMode.parse('night'), AppThemeMode.light);
+      expect(AppThemeMode.parse(null), AppThemeMode.light);
+      expect(AppThemeMode.parse('system'), AppThemeMode.system);
       expect(AppThemeMode.parse('Dark'), AppThemeMode.dark);
       expect(AppThemeMode.parse('light'), AppThemeMode.light);
     });
