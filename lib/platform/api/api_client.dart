@@ -84,6 +84,37 @@ class ApiClient {
 
   Future<Object?> put(String path, {Object? body}) => _send(() => _dio.put(path, data: body));
 
+  /// POST JSON to a slow endpoint (the assistant), with a longer wait for the answer.
+  Future<Object?> postSlow(String path, {Object? body, Duration timeout = slowTimeout}) =>
+      _send(() => _dio.post(path, data: body, options: Options(receiveTimeout: timeout)));
+
+  /// POST a multipart form — a file plus fields — to a slow endpoint.
+  Future<Object?> postMultipart(
+    String path, {
+    required List<int> bytes,
+    required String filename,
+    required String contentType,
+    Map<String, String> fields = const {},
+    Duration timeout = slowTimeout,
+  }) {
+    final form = FormData.fromMap({
+      ...fields,
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: DioMediaType.parse(contentType),
+      ),
+    });
+    return _send(() => _dio.post(
+          path,
+          data: form,
+          options: Options(contentType: 'multipart/form-data', receiveTimeout: timeout),
+        ));
+  }
+
+  /// How long the assistant may take: reading a voice note or a receipt is not instant.
+  static const slowTimeout = Duration(seconds: 60);
+
   /// Returns the decoded body, or null for a 204 No Content.
   Future<Object?> delete(String path) => _send(() => _dio.delete(path));
 

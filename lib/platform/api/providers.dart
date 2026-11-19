@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api_client.dart';
 import 'auth_token_store.dart';
+import 'resources/assistant_api.dart';
 import 'resources/auth_api.dart';
 import 'resources/budgets_api.dart';
 import 'resources/categories_api.dart';
@@ -22,16 +23,16 @@ import 'resources/units_api.dart';
 
 /// The backend base URL.
 ///
-/// Set it at build/run time with `--dart-define=KISE_API_URL=...`, which is how a physical device
+/// Set it at build/run time with `--dart-define=API_URL=...`, which is how a physical device
 /// reaches the backend on the developer's machine (a phone cannot use `localhost` or the Android
 /// emulator's `10.0.2.2`; it needs the Mac's LAN IP, e.g. `http://192.168.1.4:27707`).
 ///
 /// The default is the deployed Heroku backend, so a release build points at production with no
-/// define. For local development, pass `--dart-define=KISE_API_URL=...` (see `make env`/`make run`)
+/// define. For local development, pass `--dart-define=API_URL=...` (see `make env`/`make run`)
 /// to reach a backend on the developer's machine. A test or `main()` can still override this
 /// provider directly.
 const _defaultApiUrl = String.fromEnvironment(
-  'KISE_API_URL',
+  'API_URL',
   defaultValue: 'https://kise-app-1d266401bf6a.herokuapp.com',
 );
 
@@ -84,4 +85,8 @@ final fixedExpensesApiProvider = Provider<FixedExpensesApi>(
 
 final budgetsApiProvider = Provider<BudgetsApi>(
   (ref) => BudgetsApi(ref.watch(apiClientProvider)),
+);
+
+final assistantApiProvider = Provider<AssistantApi>(
+  (ref) => AssistantApi(ref.watch(apiClientProvider)),
 );

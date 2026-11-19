@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../platform/api/api.dart';
+import '../../assistant/assistant_sheet.dart';
 import '../../../platform/settings.dart';
 import '../../../shared/month_data.dart';
 import '../../../shared/widgets/gradient_action_button.dart';
@@ -126,11 +127,18 @@ class DashboardScreen extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: GradientActionButton(
-        key: const Key('add-expense'),
-        icon: Icons.add_rounded,
-        label: settings.say('ወጪ መዝግብ', 'Add expense'),
-        onPressed: () => showExpenseForm(context),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const AssistantButton(),
+          GradientActionButton(
+            key: const Key('add-expense'),
+            icon: Icons.add_rounded,
+            label: settings.say('ወጪ መዝግብ', 'Add expense'),
+            onPressed: () => showExpenseForm(context),
+          ),
+        ],
       ),
     );
   }

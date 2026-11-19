@@ -740,6 +740,82 @@ ProfileDto profile({
       'registered_at': '2026-09-01T00:00:00+00:00',
     });
 
+/// A scripted assistant: answers with whatever the test set, and records what it was sent.
+class FakeAssistantApi implements AssistantApi {
+  FakeAssistantApi({this.enabled = true, this.reply, this.answer = '', this.error});
+
+  final bool enabled;
+  DraftReplyDto? reply;
+  String answer;
+  ApiException? error;
+  final List<Map<String, Object?>> calls = [];
+
+  DraftReplyDto _reply() {
+    if (error != null) throw error!;
+    return reply ?? DraftReplyDto.fromJson({'message': '', 'drafts': <Object?>[]});
+  }
+
+  @override
+  Future<AssistantStatusDto> status() async =>
+      AssistantStatusDto(enabled: enabled, hourlyLimit: 30);
+
+  @override
+  Future<DraftReplyDto> readText(String text, {required String today}) async {
+    calls.add({'kind': 'text', 'text': text, 'today': today});
+    return _reply();
+  }
+
+  @override
+  Future<DraftReplyDto> readVoice(List<int> bytes,
+      {required String contentType, required String today, String filename = 'voice.m4a'}) async {
+    calls.add({'kind': 'voice', 'bytes': bytes, 'type': contentType, 'today': today});
+    return _reply();
+  }
+
+  @override
+  Future<DraftReplyDto> readReceipt(List<int> bytes,
+      {required String contentType,
+      required String today,
+      String filename = 'receipt.jpg'}) async {
+    calls.add({'kind': 'receipt', 'bytes': bytes, 'type': contentType, 'today': today});
+    return _reply();
+  }
+
+  @override
+  Future<String> ask(String question, {required String today}) async {
+    calls.add({'kind': 'ask', 'question': question, 'today': today});
+    if (error != null) throw error!;
+    return answer;
+  }
+}
+
+/// A draft as the server sends it.
+DraftExpenseDto draftOf({
+  String categoryId = 'c1',
+  String categoryName = 'Taxi',
+  int amountMinor = 15000,
+  String gregorian = '2026-09-04',
+  String ethiopian = '2018-12-29',
+  String paymentMethod = 'cash',
+  String? note,
+  Map<String, Object?>? item,
+  List<String> warnings = const [],
+}) =>
+    DraftExpenseDto.fromJson({
+      'category_id': categoryId,
+      'category_name': categoryName,
+      'category_name_am': null,
+      'amount': _m(amountMinor),
+      'spent_on': _date(gregorian, ethiopian),
+      'payment_method': paymentMethod,
+      'note': note,
+      'item': item,
+      'warnings': warnings,
+    });
+
+DraftReplyDto replyOf(List<DraftExpenseDto> drafts, {String message = '', String? transcript}) =>
+    DraftReplyDto(message: message, transcript: transcript, merchant: null, drafts: drafts);
+
 /// Provider overrides that replace the network-backed data sources with fakes, and force the
 /// session to signed-in so gated screens render.
 List<Override> fakeApiOverrides({
@@ -751,8 +827,10 @@ List<Override> fakeApiOverrides({
   FakeFixedExpensesApi? fixedExpenses,
   FakeBudgetsApi? budgets,
   FakeAuthApi? auth,
+  FakeAssistantApi? assistant,
 }) =>
     [
+      assistantApiProvider.overrideWithValue(assistant ?? FakeAssistantApi(enabled: false)),
       budgetsApiProvider.overrideWithValue(budgets ?? FakeBudgetsApi()),
       authApiProvider.overrideWithValue(auth ?? FakeAuthApi()),
       expensesApiProvider.overrideWithValue(expenses ?? FakeExpensesApi()),

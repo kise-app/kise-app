@@ -31,6 +31,12 @@ dependencies:
   # The daily spending chart on the dashboard.
   fl_chart: ^0.69.2
 
+  # The assistant: voice notes (record, into a temp file from path_provider) and receipt photos
+  # (image_picker). Pinned exactly: they touch the microphone and camera.
+  record: 7.2.0
+  image_picker: 1.2.4
+  path_provider: 2.1.6
+
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.5
 

@@ -22,7 +22,7 @@ Future<void> main() async {
       overrides: [
         settingsStoreProvider.overrideWithValue(store),
         // The API base URL is not overridden here on purpose: apiConfigProvider reads it from
-        // KISE_API_URL (a --dart-define), so a physical device can be pointed at the Mac's LAN IP
+        // API_URL (a --dart-define), so a physical device can be pointed at the Mac's LAN IP
         // at run time without editing source. See platform/api/providers.dart.
       ],
       child: const KiseApp(),

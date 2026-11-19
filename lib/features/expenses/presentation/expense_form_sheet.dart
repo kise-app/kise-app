@@ -37,17 +37,48 @@ String paymentMethodLabel(String method, AppSettings settings) => switch (method
   _ => settings.say('ሌላ', 'Other'),
 };
 
+/// Values to start a *new* expense from — what the assistant read from a voice note or receipt.
+/// Recording it is still the person's decision: the form opens pre-filled and they press save.
+class ExpenseDraft {
+  const ExpenseDraft({
+    required this.categoryId,
+    required this.amountMinor,
+    required this.date,
+    this.paymentMethod = 'cash',
+    this.note,
+    this.itemName,
+    this.quantity,
+    this.unitId,
+  });
+
+  final String categoryId;
+  final int amountMinor;
+
+  /// A Gregorian date.
+  final DateTime date;
+  final String paymentMethod;
+  final String? note;
+  final String? itemName;
+  final String? quantity;
+  final String? unitId;
+}
+
 /// What the sheet did, so a caller can show a confirmation.
 enum ExpenseFormResult { recorded, updated, deleted }
 
-/// Show the form as a modal sheet. Pass [expense] to edit (and offer delete) instead of record.
-Future<ExpenseFormResult?> showExpenseForm(BuildContext context, {ExpenseDto? expense}) =>
+/// Show the form as a modal sheet. Pass [expense] to edit (and offer delete) instead of record, or
+/// [draft] to record a new expense starting from those values.
+Future<ExpenseFormResult?> showExpenseForm(
+  BuildContext context, {
+  ExpenseDto? expense,
+  ExpenseDraft? draft,
+}) =>
     showModalBottomSheet<ExpenseFormResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => ExpenseFormSheet(expense: expense),
+      builder: (_) => ExpenseFormSheet(expense: expense, draft: draft),
     );
 
 /// Ask before deleting. Returns true when the user confirmed.
@@ -78,10 +109,13 @@ Future<bool> confirmDeleteExpense(BuildContext context, AppSettings settings) as
 }
 
 class ExpenseFormSheet extends ConsumerStatefulWidget {
-  const ExpenseFormSheet({super.key, this.expense});
+  const ExpenseFormSheet({super.key, this.expense, this.draft});
 
   /// The expense being edited, or null to record a new one.
   final ExpenseDto? expense;
+
+  /// Starting values for a new expense; ignored when editing.
+  final ExpenseDraft? draft;
 
   @override
   ConsumerState<ExpenseFormSheet> createState() => _ExpenseFormSheetState();
@@ -110,6 +144,22 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
   void initState() {
     super.initState();
     final expense = widget.expense;
+    final draft = widget.draft;
+    if (expense == null && draft != null) {
+      _amount.text = _majorText(Money(draft.amountMinor));
+      _categoryId = draft.categoryId;
+      _paymentMethod =
+          _paymentMethods.contains(draft.paymentMethod) ? draft.paymentMethod : 'other';
+      _date = draft.date;
+      _note.text = draft.note ?? '';
+      if (draft.itemName != null && draft.quantity != null && draft.unitId != null) {
+        _trackItem = true;
+        _itemName.text = draft.itemName!;
+        _quantity.text = draft.quantity!;
+        _unitId = draft.unitId;
+      }
+      return;
+    }
     if (expense == null) {
       _date = ref.read(todayProvider);
       return;

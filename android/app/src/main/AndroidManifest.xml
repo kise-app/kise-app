@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The API lives on the internet; debug builds get this from the debug manifest, release
+         builds need it here. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice notes for the assistant. Asked for the first time the mic button is held. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="kise"
         android:name="${applicationName}"

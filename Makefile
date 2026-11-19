@@ -41,7 +41,7 @@ devices: ## List attached devices and simulators
 sim: ## Run on the iOS Simulator (make sim SIM="iPhone 16")
 	@xcrun simctl boot "$(SIM)" >/dev/null 2>&1 || true
 	@open -a Simulator
-	$(RUN) -d "$(SIM)" --dart-define=KISE_API_URL=$(SIM_API)
+	$(RUN) -d "$(SIM)" --dart-define=API_URL=$(SIM_API)
 
 .PHONY: run-ios
 run-ios: sim ## Alias for `make sim`
@@ -82,7 +82,7 @@ env: ## Write env/dev.json with the Mac's LAN IP (override: make env IP=1.2.3.4 
 	@mkdir -p env
 	@ip="$(IP)"; [ -n "$$ip" ] || ip=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null); \
 	if [ -z "$$ip" ]; then echo "Could not detect a LAN IP; pass one: make env IP=1.2.3.4"; exit 1; fi; \
-	printf '{\n  "KISE_API_URL": "http://%s:%s"\n}\n' "$$ip" "$(PORT)" > $(DEV_ENV); \
+	printf '{\n  "API_URL": "http://%s:%s"\n}\n' "$$ip" "$(PORT)" > $(DEV_ENV); \
 	echo "Wrote $(DEV_ENV) -> http://$$ip:$(PORT)"
 
 # Created on demand, so `make iphone` works on a fresh clone. `make env` refreshes it after the

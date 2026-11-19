@@ -8,6 +8,7 @@ export 'api_client.dart';
 export 'api_exception.dart';
 export 'auth_token_store.dart';
 export 'providers.dart';
+export 'resources/assistant_api.dart';
 export 'resources/auth_api.dart';
 export 'resources/budgets_api.dart';
 export 'resources/categories_api.dart';
