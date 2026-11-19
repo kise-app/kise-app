@@ -13,11 +13,15 @@ import '../../platform/theme.dart';
 import '../../shared_kernel/period.dart';
 
 class PeriodNavigator extends ConsumerWidget {
-  const PeriodNavigator({super.key, this.onGradient = false});
+  const PeriodNavigator({super.key, this.onGradient = false, this.keyPrefix = ''});
 
   /// Frosted-glass styling for use over the dashboard's hero gradient, where a solid surface pill
   /// would punch a hole in the picture.
   final bool onGradient;
+
+  /// Prefixed to the test keys (`period-label`, `jump-to-today`), so a navigator on another tab of
+  /// the same IndexedStack does not collide with the dashboard's.
+  final String keyPrefix;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,7 +58,7 @@ class PeriodNavigator extends ConsumerWidget {
               children: [
                 Text(
                   period.label(settings.language),
-                  key: const Key('period-label'),
+                  key: Key('${keyPrefix}period-label'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: foreground,
@@ -63,7 +67,7 @@ class PeriodNavigator extends ConsumerWidget {
                 ),
                 Text(
                   period.counterpartLabel(settings.language),
-                  key: const Key('period-counterpart-label'),
+                  key: Key('${keyPrefix}period-counterpart-label'),
                   style: theme.textTheme.bodySmall?.copyWith(color: secondary),
                   textAlign: TextAlign.center,
                 ),
@@ -78,7 +82,7 @@ class PeriodNavigator extends ConsumerWidget {
               background: buttonBackground,
               onPressed: () =>
                   ref.read(selectedPeriodProvider.notifier).state = currentPeriod,
-              buttonKey: const Key('jump-to-today'),
+              buttonKey: Key('${keyPrefix}jump-to-today'),
             ),
           _StepButton(
             icon: Icons.chevron_right_rounded,

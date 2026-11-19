@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kise/app_shell.dart';
 import 'package:kise/main.dart';
+import 'package:kise/platform/api/api.dart';
 import 'package:kise/platform/settings.dart';
 import 'package:kise/platform/theme.dart';
 import 'package:kise/shared_kernel/period.dart';
@@ -22,14 +23,15 @@ final _fixedToday = DateTime.utc(2026, 9, 4);
 Widget _app({
   DateTime? today,
   AppSettings settings = const AppSettings(),
+  FakeMonthlySummaryApi? summary,
 }) {
   return ProviderScope(
     overrides: [
       todayProvider.overrideWithValue(today ?? _fixedToday),
       settingsStoreProvider.overrideWithValue(InMemorySettingsStore(settings)),
-      // The expenses tab is built eagerly inside the IndexedStack; fake the API so it does not
-      // fire real network requests and leave pending timers.
-      ...fakeApiOverrides(),
+      // Every tab is built eagerly inside the IndexedStack; fake the API so nothing fires real
+      // network requests and leaves pending timers.
+      ...fakeApiOverrides(summary: summary),
     ],
     child: MaterialApp(theme: buildTheme(), home: const AppShell()),
   );
@@ -146,11 +148,69 @@ void main() {
 
     testWidgets('the month total is the fixed plus dynamic split', (tester) async {
       await tester.pumpWidget(_app());
+      await tester.pumpAndSettle();
 
-      // Sample data: 8,200 committed + 1,246.xx dynamic, rendered with a thousands separator.
-      final total = _textOf(tester, 'grand-total');
-      expect(total, contains(','));
-      expect(total, endsWith('ETB'));
+      // Fake month: 8,200 committed + 600 dynamic.
+      expect(_textOf(tester, 'grand-total'), '8,800 ETB');
+      // Against last month's 9,000: 2% less.
+      expect(find.text('ከባለፈው ወር 2% በታች'), findsOneWidget);
+    });
+
+    testWidgets('asks the server for the month in view, and the next one on paging',
+        (tester) async {
+      final summary = FakeMonthlySummaryApi();
+      await tester.pumpWidget(_app(summary: summary));
+      await tester.pumpAndSettle();
+      expect(summary.requested.last, Period(CalendarKind.ethiopian, 2018, 12));
+
+      await tester.tap(find.byTooltip('የሚቀጥለው ወር'));
+      await tester.pumpAndSettle();
+      expect(summary.requested.last, Period(CalendarKind.ethiopian, 2018, 13));
+    });
+
+    testWidgets('the category card lists what the server returned, largest first',
+        (tester) async {
+      await tester.pumpWidget(_app(settings: const AppSettings(language: Language.english)));
+      await tester.pumpAndSettle();
+
+      final rent = tester.getTopLeft(find.text('Rent')).dy;
+      final food = tester.getTopLeft(find.text('Food')).dy;
+      final internet = tester.getTopLeft(find.text('Airtime & Internet')).dy;
+      expect(rent, lessThan(food));
+      expect(food, lessThan(internet));
+      expect(find.text('91%'), findsOneWidget); // 8,000 of 8,800
+    });
+
+    testWidgets('an empty month says so instead of drawing empty bars', (tester) async {
+      await tester.pumpWidget(_app(
+        summary: FakeMonthlySummaryApi(
+          build: (period) => summaryOf(daily: List.filled(period.lengthInDays, 0)),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(_textOf(tester, 'grand-total'), '0 ETB');
+      expect(find.byKey(const Key('categories-empty')), findsOneWidget);
+    });
+
+    testWidgets('a failed load keeps the layout and offers a retry', (tester) async {
+      var fail = true;
+      final summary = FakeMonthlySummaryApi(build: (period) {
+        if (fail) throw const ApiException(message: 'Server unavailable', statusCode: 503);
+        return FakeMonthlySummaryApi.defaultSummary(period);
+      });
+      await tester.pumpWidget(_app(summary: summary));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('summary-error')), findsOneWidget);
+      expect(find.text('Server unavailable'), findsOneWidget);
+      expect(_textOf(tester, 'grand-total'), '0 ETB');
+
+      fail = false;
+      await tester.tap(find.text('እንደገና ሞክር'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('summary-error')), findsNothing);
+      expect(_textOf(tester, 'grand-total'), '8,800 ETB');
     });
 
     testWidgets('no budget bar when no budget is set', (tester) async {
@@ -280,7 +340,7 @@ void main() {
   });
 
   group('other tabs', () {
-    testWidgets('expenses and fixed expenses say what is coming', (tester) async {
+    testWidgets('expenses and fixed expenses explain themselves when empty', (tester) async {
       await tester.pumpWidget(_app());
 
       await tester.tap(find.byIcon(Icons.receipt_long_outlined));

@@ -9,6 +9,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kise/platform/api/api.dart';
 import 'package:kise/platform/session/session_controller.dart';
+import 'package:kise/shared_kernel/period.dart';
 
 class FakeExpensesApi implements ExpensesApi {
   FakeExpensesApi({ExpensePageDto? page, this.onRecord}) : _page = page ?? emptyPage();
@@ -18,6 +19,18 @@ class FakeExpensesApi implements ExpensesApi {
 
   /// The last record() call's arguments, for assertions.
   Map<String, Object?>? lastRecord;
+
+  /// The last update() call's id and arguments.
+  Map<String, Object?>? lastUpdate;
+
+  /// Ids passed to delete(), in order.
+  final List<String> deleted = [];
+
+  /// Every list() call's filter and paging arguments, in order.
+  final List<Map<String, Object?>> listCalls = [];
+
+  /// When set, list() answers from this instead of the fixed page — for paging tests.
+  ExpensePageDto Function(int offset, int limit)? pager;
 
   static ExpensePageDto emptyPage() => ExpensePageDto.fromJson({
         'items': <Object?>[],
@@ -38,10 +51,21 @@ class FakeExpensesApi implements ExpensesApi {
     String? until,
     String dateCalendar = 'gregorian',
     List<String> categoryIds = const [],
+    List<String> paymentMethods = const [],
+    String? search,
     int limit = 50,
     int offset = 0,
-  }) async =>
-      _page;
+  }) async {
+    listCalls.add({
+      'category_ids': categoryIds,
+      'payment_methods': paymentMethods,
+      'search': search,
+      'limit': limit,
+      'offset': offset,
+    });
+    if (pager != null) return pager!(offset, limit);
+    return _page;
+  }
 
   @override
   Future<ExpenseDto> record({
@@ -89,11 +113,317 @@ class FakeExpensesApi implements ExpensesApi {
     String? quantity,
     String? unitId,
     bool clearItem = false,
-  }) async =>
-      throw UnimplementedError();
+  }) async {
+    lastUpdate = {
+      'id': id,
+      'category_id': categoryId,
+      'amount_minor': amountMinor,
+      'date': date,
+      'note': note,
+      'payment_method': paymentMethod,
+      'item_name': itemName,
+      'quantity': quantity,
+      'unit_id': unitId,
+      'clear_item': clearItem,
+    };
+    return _expense(
+      categoryId: categoryId ?? 'cat-1',
+      amountMinor: amountMinor ?? 0,
+      date: date ?? '2026-09-04',
+    );
+  }
 
   @override
-  Future<void> delete(String id) async {}
+  Future<void> delete(String id) async => deleted.add(id);
+}
+
+/// A dashboard month. The default looks like a real month (rent + internet committed, ~1,246 ETB
+/// of day-to-day spending) so layout assertions have something to bite on.
+class FakeMonthlySummaryApi implements MonthlySummaryApi {
+  FakeMonthlySummaryApi({this.build});
+
+  final MonthlySummaryDto Function(Period period)? build;
+
+  /// Every period asked for, in order.
+  final List<Period> requested = [];
+
+  @override
+  Future<MonthlySummaryDto> forPeriod({
+    required int year,
+    required int month,
+    String calendar = 'ethiopian',
+  }) async {
+    final period = Period(CalendarKind.parse(calendar), year, month);
+    requested.add(period);
+    return (build ?? defaultSummary)(period);
+  }
+
+  static MonthlySummaryDto defaultSummary(Period period) {
+    final days = period.lengthInDays;
+    final daily = List<int>.generate(days, (i) => i == 2 ? 30000 : (i % 3 == 0 ? 3000 : 0));
+    final dynamicMinor = daily.fold<int>(0, (a, b) => a + b);
+    return summaryOf(
+      committedMinor: 820000,
+      settledMinor: 800000,
+      dynamicMinor: dynamicMinor,
+      previousTotalMinor: 900000,
+      expenseCount: 17,
+      daily: daily,
+      categories: [
+        spend('c-rent', 'Rent', 'ቤት ኪራይ', '#6D4C41', 'home', committedMinor: 800000),
+        spend('c-food', 'Food', 'ምግብ', '#E53935', 'restaurant', dynamicMinor: dynamicMinor),
+        spend('c-net', 'Airtime & Internet', 'ካርድና ኢንተርኔት', '#00897B', 'wifi',
+            committedMinor: 20000),
+      ],
+    );
+  }
+}
+
+CategorySpendDto spend(
+  String id,
+  String name,
+  String? nameAm,
+  String color,
+  String? icon, {
+  int dynamicMinor = 0,
+  int committedMinor = 0,
+  int expenseCount = 1,
+}) =>
+    CategorySpendDto.fromJson({
+      'category_id': id,
+      'name': name,
+      'name_am': nameAm,
+      'color': color,
+      'icon': icon,
+      'total': _m(dynamicMinor + committedMinor),
+      'dynamic': _m(dynamicMinor),
+      'committed': _m(committedMinor),
+      'expense_count': expenseCount,
+    });
+
+MonthlySummaryDto summaryOf({
+  required List<int> daily,
+  int committedMinor = 0,
+  int settledMinor = 0,
+  int? dynamicMinor,
+  int previousTotalMinor = 0,
+  int expenseCount = 0,
+  List<CategorySpendDto> categories = const [],
+}) {
+  final dynamicTotal = dynamicMinor ?? daily.fold<int>(0, (a, b) => a + b);
+  return MonthlySummaryDto.fromJson({
+    'currency': 'ETB',
+    'grand_total': _m(dynamicTotal + committedMinor),
+    'dynamic_total': _m(dynamicTotal),
+    'expense_count': expenseCount,
+    'committed': _m(committedMinor),
+    'settled': _m(settledMinor),
+    'outstanding': _m(committedMinor - settledMinor),
+    'previous_total': _m(previousTotalMinor),
+    'daily_minor': daily,
+    'categories': [
+      for (final c in categories)
+        {
+          'category_id': c.categoryId,
+          'name': c.name,
+          'name_am': c.nameAm,
+          'color': c.color,
+          'icon': c.icon,
+          'total': _m(c.totalMinor),
+          'dynamic': _m(c.dynamicMinor),
+          'committed': _m(c.committedMinor),
+          'expense_count': c.expenseCount,
+        },
+    ],
+  });
+}
+
+Map<String, Object?> _m(int minor) => {'amount_minor': minor, 'currency': 'ETB'};
+
+class FakeItemUsageReportsApi implements ItemUsageReportsApi {
+  @override
+  Future<ItemUsageReportDto> forPeriod({
+    required int year,
+    required int month,
+    String calendar = 'ethiopian',
+  }) async =>
+      ItemUsageReportDto.fromJson({
+        'period': {'calendar': calendar, 'label_am': '', 'label_en': ''},
+        'currency': 'ETB',
+        'lines': <Object?>[],
+      });
+}
+
+/// An in-memory Fixed Monthly Expenses backend: commitments are owed in every month from their
+/// start unless paused, and settling marks them paid for that month.
+class FakeFixedExpensesApi implements FixedExpensesApi {
+  FakeFixedExpensesApi([List<FixedExpenseDto> commitments = const []])
+      : commitments = [...commitments];
+
+  final List<FixedExpenseDto> commitments;
+
+  /// fixedExpenseId -> amount paid, for the (single) month under test.
+  final Map<String, int> settled = {};
+  final List<String> calls = [];
+  Map<String, Object?>? lastSchedule;
+
+  @override
+  Future<List<FixedExpenseDto>> list() async => [...commitments];
+
+  @override
+  Future<OccurrenceMonthDto> occurrences(Period period) async {
+    final owed = commitments.where((c) => !c.isPaused).toList();
+    final rows = [
+      for (final c in owed)
+        {
+          'fixed_expense_id': c.id,
+          'category_id': c.categoryId,
+          'category_name': c.categoryName,
+          'category_name_am': c.categoryNameAm,
+          'title': c.title,
+          'period': periodToJson(period),
+          'due_date': _date('2026-08-11', '2018-12-05'),
+          'amount': _m(settled[c.id] ?? c.amount.minorUnits),
+          'is_settled': settled.containsKey(c.id),
+          'settled_on': settled.containsKey(c.id) ? _date('2026-08-10', '2018-12-04') : null,
+        },
+    ];
+    final committed = rows.fold<int>(
+        0, (sum, r) => sum + ((r['amount'] as Map)['amount_minor'] as int));
+    final paid = rows
+        .where((r) => r['is_settled'] == true)
+        .fold<int>(0, (sum, r) => sum + ((r['amount'] as Map)['amount_minor'] as int));
+    return OccurrenceMonthDto.fromJson({
+      'occurrences': rows,
+      'committed': _m(committed),
+      'settled': _m(paid),
+      'outstanding': _m(committed - paid),
+    });
+  }
+
+  @override
+  Future<FixedExpenseDto> schedule({
+    required String categoryId,
+    required String title,
+    required int amountMinor,
+    required Period startPeriod,
+    Period? endPeriod,
+    int dueDay = 1,
+    String? note,
+  }) async {
+    lastSchedule = {
+      'category_id': categoryId,
+      'title': title,
+      'amount_minor': amountMinor,
+      'start_period': startPeriod,
+      'due_day': dueDay,
+      'note': note,
+    };
+    final created = fixedExpense('fx-${commitments.length + 1}', title, amountMinor,
+        categoryId: categoryId, dueDay: dueDay, start: startPeriod);
+    commitments.add(created);
+    return created;
+  }
+
+  @override
+  Future<FixedExpenseDto> update(
+    String id, {
+    String? title,
+    int? amountMinor,
+    String? categoryId,
+    int? dueDay,
+    String? note,
+    Period? endPeriod,
+    bool clearEndPeriod = false,
+  }) async {
+    calls.add('update:$id');
+    final index = commitments.indexWhere((c) => c.id == id);
+    final old = commitments[index];
+    commitments[index] = fixedExpense(id, title ?? old.title, amountMinor ?? old.amount.minorUnits,
+        categoryId: categoryId ?? old.categoryId, dueDay: dueDay ?? old.dueDay);
+    return commitments[index];
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    calls.add('delete:$id');
+    commitments.removeWhere((c) => c.id == id);
+  }
+
+  FixedExpenseDto _setPaused(String id, bool paused) {
+    final index = commitments.indexWhere((c) => c.id == id);
+    final old = commitments[index];
+    commitments[index] = fixedExpense(id, old.title, old.amount.minorUnits,
+        categoryId: old.categoryId, dueDay: old.dueDay, paused: paused);
+    return commitments[index];
+  }
+
+  @override
+  Future<FixedExpenseDto> pause(String id) async {
+    calls.add('pause:$id');
+    return _setPaused(id, true);
+  }
+
+  @override
+  Future<FixedExpenseDto> resume(String id) async {
+    calls.add('resume:$id');
+    return _setPaused(id, false);
+  }
+
+  @override
+  Future<OccurrenceDto> settle(
+    String id,
+    Period period, {
+    int? amountMinor,
+    String? settledOn,
+  }) async {
+    calls.add('settle:$id:${amountMinor ?? 'committed'}');
+    final c = commitments.firstWhere((c) => c.id == id);
+    settled[id] = amountMinor ?? c.amount.minorUnits;
+    return (await occurrences(period)).occurrences.firstWhere((o) => o.fixedExpenseId == id);
+  }
+
+  @override
+  Future<OccurrenceDto> unsettle(String id, Period period) async {
+    calls.add('unsettle:$id');
+    settled.remove(id);
+    return (await occurrences(period)).occurrences.firstWhere((o) => o.fixedExpenseId == id);
+  }
+}
+
+Map<String, Object?> _date(String gregorian, String ethiopian) => {
+      'gregorian': gregorian,
+      'ethiopian': ethiopian,
+      'ethiopian_month_name_am': 'ነሐሴ',
+      'ethiopian_month_name_en': 'Nehase',
+      'entered_in': 'gregorian',
+    };
+
+FixedExpenseDto fixedExpense(
+  String id,
+  String title,
+  int amountMinor, {
+  String categoryId = 'c-rent',
+  int dueDay = 5,
+  bool paused = false,
+  Period? start,
+}) {
+  final startPeriod = start ?? Period(CalendarKind.ethiopian, 2018, 12);
+  return FixedExpenseDto.fromJson({
+    'id': id,
+    'category_id': categoryId,
+    'category_name': 'Rent',
+    'category_name_am': 'ቤት ኪራይ',
+    'title': title,
+    'amount': _m(amountMinor),
+    'anchor_calendar': startPeriod.calendar.wire,
+    'start_period': periodToJson(startPeriod),
+    'end_period': null,
+    'due_day': dueDay,
+    'note': null,
+    'is_paused': paused,
+    'settled_periods': <Object?>[],
+  });
 }
 
 class FakeCategoriesApi implements CategoriesApi {
@@ -119,6 +449,9 @@ class FakeCategoriesApi implements CategoriesApi {
 
   @override
   Future<CategoryDto?> remove(String id) async => null;
+
+  @override
+  Future<CategoryDto> restore(String id) async => throw UnimplementedError();
 }
 
 class FakeUnitsApi implements UnitsApi {
@@ -258,9 +591,14 @@ List<Override> fakeApiOverrides({
   FakeCategoriesApi? categories,
   FakeUnitsApi? units,
   FakeItemsApi? items,
+  FakeMonthlySummaryApi? summary,
+  FakeFixedExpensesApi? fixedExpenses,
 }) =>
     [
       expensesApiProvider.overrideWithValue(expenses ?? FakeExpensesApi()),
+      monthlySummaryApiProvider.overrideWithValue(summary ?? FakeMonthlySummaryApi()),
+      fixedExpensesApiProvider.overrideWithValue(fixedExpenses ?? FakeFixedExpensesApi()),
+      itemUsageReportsApiProvider.overrideWithValue(FakeItemUsageReportsApi()),
       categoriesApiProvider.overrideWithValue(categories ?? FakeCategoriesApi()),
       unitsApiProvider.overrideWithValue(units ?? FakeUnitsApi()),
       itemsApiProvider.overrideWithValue(items ?? FakeItemsApi()),

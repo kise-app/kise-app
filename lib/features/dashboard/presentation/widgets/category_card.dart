@@ -5,33 +5,47 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../../../platform/api/api.dart';
 import '../../../../platform/settings.dart';
+import '../../../../shared/category_visuals.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared_kernel/money.dart';
-import '../../sample_data.dart';
+import '../../month_summary.dart';
 
 class CategoryCard extends StatelessWidget {
   const CategoryCard({super.key, required this.month, required this.settings});
 
-  final SampleMonth month;
+  final MonthSummary month;
   final AppSettings settings;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final total = month.grandTotal;
     final sorted = month.categoriesBySize;
 
     return SectionCard(
       title: settings.say('በምድብ', 'By category'),
       subtitle: settings.say('የወሩ ወጪ ክፍፍል', 'Where the month went'),
-      child: Column(
-        children: [
-          _ShareBar(categories: sorted, total: total),
-          const SizedBox(height: 8),
-          for (final category in sorted)
-            _CategoryRow(category: category, total: total, settings: settings),
-        ],
-      ),
+      child: sorted.isEmpty
+          ? Padding(
+              key: const Key('categories-empty'),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                settings.say('በዚህ ወር ገና ወጪ የለም።', 'Nothing spent this month yet.'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                _ShareBar(categories: sorted, total: total),
+                const SizedBox(height: 8),
+                for (final category in sorted)
+                  _CategoryRow(category: category, total: total, settings: settings),
+              ],
+            ),
     );
   }
 }
@@ -39,7 +53,7 @@ class CategoryCard extends StatelessWidget {
 class _ShareBar extends StatelessWidget {
   const _ShareBar({required this.categories, required this.total});
 
-  final List<SampleCategory> categories;
+  final List<CategorySpendDto> categories;
   final Money total;
 
   @override
@@ -51,10 +65,10 @@ class _ShareBar extends StatelessWidget {
           for (var index = 0; index < categories.length; index++) ...[
             if (index > 0) const SizedBox(width: 3),
             Expanded(
-              flex: (Money(categories[index].amountMinor, total.currency).shareOf(total) * 1000)
+              flex: (Money(categories[index].totalMinor, total.currency).shareOf(total) * 1000)
                   .round()
                   .clamp(6, 1000),
-              child: Container(height: 10, color: categories[index].color),
+              child: Container(height: 10, color: categoryColor(categories[index].color)),
             ),
           ],
         ],
@@ -66,7 +80,7 @@ class _ShareBar extends StatelessWidget {
 class _CategoryRow extends StatelessWidget {
   const _CategoryRow({required this.category, required this.total, required this.settings});
 
-  final SampleCategory category;
+  final CategorySpendDto category;
   final Money total;
   final AppSettings settings;
 
@@ -74,8 +88,9 @@ class _CategoryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final amount = Money(category.amountMinor, settings.currency);
+    final amount = Money(category.totalMinor, total.currency);
     final percent = (amount.shareOf(total) * 100).round();
+    final color = categoryColor(category.color);
 
     return Padding(
       padding: const EdgeInsets.only(top: 14),
@@ -85,16 +100,26 @@ class _CategoryRow extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: category.color.withValues(alpha: 0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(category.icon, size: 20, color: category.color),
+            child: Icon(categoryIcon(category.icon), size: 20, color: color),
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              category.name(settings.isAmharic),
-              style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  category.label(settings.isAmharic),
+                  style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                if (category.committedMinor > 0)
+                  Text(
+                    settings.say('ቋሚ ወጪን ያካትታል', 'includes fixed'),
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 12),

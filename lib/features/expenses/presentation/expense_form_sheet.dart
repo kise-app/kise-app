@@ -1,18 +1,21 @@
-/// The expense entry form.
+/// The expense entry form — for recording a new expense and for editing or deleting one.
 ///
-/// Presented as a modal bottom sheet from the dashboard's "Add expense" button and the expenses tab.
-/// It captures what a person actually needs to record a spend:
+/// Presented as a modal bottom sheet from the dashboard's "Add expense" button, the expenses tab,
+/// and by tapping an expense in the list. It captures what a person actually needs to record a
+/// spend:
 ///
 /// * **amount** in major units (birr), converted to minor (santim) on submit;
 /// * **category** — a required picker from the owner's categories;
-/// * **date** — defaults to today, entered in the owner's calendar (the form sends the Gregorian
-///   value with the calendar tag, and the backend keeps Gregorian canonical);
+/// * **date** — defaults to today (from `todayProvider`, the app's one source of "now"); the picker
+///   returns a Gregorian date, sent tagged `gregorian`, and the backend renders both calendars back;
 /// * **payment method** and an optional **note**;
-/// * an optional **item line** — toggle it on to also record *what* was bought: an existing item or
-///   a new name, a quantity, and the unit it is counted in. This is what feeds the month-end usage
-///   report.
+/// * an optional **item line** — toggle it on to also record *what* was bought: an item name, a
+///   quantity, and the unit it is counted in. This is what feeds the month-end usage report.
 ///
-/// On success it invalidates the list + item providers so the new expense appears, and pops.
+/// Editing pre-fills every field and sends the whole form as a PATCH; switching the item line off
+/// on an expense that had one clears it. Delete asks for confirmation first.
+///
+/// On success it refreshes every month view (list, dashboard, item usage) and pops.
 library;
 
 import 'package:flutter/material.dart';
@@ -23,17 +26,62 @@ import '../../../platform/settings.dart';
 import '../../../shared_kernel/money.dart';
 import 'expense_providers.dart';
 
-/// Show the form as a modal sheet. Returns true when an expense was recorded.
-Future<bool?> showExpenseForm(BuildContext context) => showModalBottomSheet<bool>(
+/// The payment methods the backend accepts, in the order the pickers show them.
+const paymentMethods = ['cash', 'telebirr', 'bank', 'card', 'other'];
+
+String paymentMethodLabel(String method, AppSettings settings) => switch (method) {
+  'cash' => settings.say('ጥሬ ገንዘብ', 'Cash'),
+  'telebirr' => 'Telebirr',
+  'bank' => settings.say('ባንክ', 'Bank'),
+  'card' => settings.say('ካርድ', 'Card'),
+  _ => settings.say('ሌላ', 'Other'),
+};
+
+/// What the sheet did, so a caller can show a confirmation.
+enum ExpenseFormResult { recorded, updated, deleted }
+
+/// Show the form as a modal sheet. Pass [expense] to edit (and offer delete) instead of record.
+Future<ExpenseFormResult?> showExpenseForm(BuildContext context, {ExpenseDto? expense}) =>
+    showModalBottomSheet<ExpenseFormResult>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => const ExpenseFormSheet(),
+      builder: (_) => ExpenseFormSheet(expense: expense),
     );
 
+/// Ask before deleting. Returns true when the user confirmed.
+Future<bool> confirmDeleteExpense(BuildContext context, AppSettings settings) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(settings.say('ወጪውን ልሰርዝ?', 'Delete this expense?')),
+      content: Text(settings.say('ይህ ሊመለስ አይችልም።', 'This cannot be undone.')),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(settings.say('ተመለስ', 'Cancel')),
+        ),
+        FilledButton(
+          key: const Key('confirm-delete'),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(settings.say('ሰርዝ', 'Delete')),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
 class ExpenseFormSheet extends ConsumerStatefulWidget {
-  const ExpenseFormSheet({super.key});
+  const ExpenseFormSheet({super.key, this.expense});
+
+  /// The expense being edited, or null to record a new one.
+  final ExpenseDto? expense;
 
   @override
   ConsumerState<ExpenseFormSheet> createState() => _ExpenseFormSheetState();
@@ -48,13 +96,47 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
 
   String? _categoryId;
   String _paymentMethod = 'cash';
-  DateTime _date = DateTime.now();
+  late DateTime _date;
   bool _trackItem = false;
   String? _unitId;
   bool _submitting = false;
   String? _submitError;
 
-  static const _paymentMethods = ['cash', 'telebirr', 'bank', 'card', 'other'];
+  static const _paymentMethods = paymentMethods;
+
+  bool get _editing => widget.expense != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final expense = widget.expense;
+    if (expense == null) {
+      _date = ref.read(todayProvider);
+      return;
+    }
+    _amount.text = _majorText(expense.amount);
+    _categoryId = expense.categoryId;
+    _paymentMethod = _paymentMethods.contains(expense.paymentMethod)
+        ? expense.paymentMethod
+        : 'other';
+    _date = DateTime.tryParse(expense.spentOn.gregorian) ?? ref.read(todayProvider);
+    _note.text = expense.note ?? '';
+    final item = expense.item;
+    if (item != null) {
+      _trackItem = true;
+      _itemName.text = item.itemName ?? '';
+      _quantity.text = item.quantity;
+      _unitId = item.unitId;
+    }
+  }
+
+  /// 12500 santim -> "125", 12550 -> "125.5": what a person would have typed.
+  static String _majorText(Money amount) {
+    final major = amount.majorUnits;
+    return major == major.roundToDouble()
+        ? major.round().toString()
+        : major.toStringAsFixed(2).replaceFirst(RegExp(r'0$'), '');
+  }
 
   @override
   void dispose() {
@@ -68,8 +150,9 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_categoryId == null) {
-      setState(() => _submitError = ref.read(settingsProvider).say(
-            'ምድብ ይምረጡ', 'Choose a category'));
+      setState(
+        () => _submitError = ref.read(settingsProvider).say('ምድብ ይምረጡ', 'Choose a category'),
+      );
       return;
     }
     setState(() {
@@ -83,28 +166,70 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
     ).minorUnits;
     final date =
         '${_date.year.toString().padLeft(4, '0')}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
+    final note = _note.text.trim();
+    final itemName = _trackItem && _itemName.text.trim().isNotEmpty ? _itemName.text.trim() : null;
+    final quantity = _trackItem && _quantity.text.trim().isNotEmpty ? _quantity.text.trim() : null;
+    final unitId = _trackItem ? _unitId : null;
     try {
-      await ref.read(expensesApiProvider).record(
-            categoryId: _categoryId!,
-            amountMinor: amountMinor,
-            date: date,
-            // The date picker returns a Gregorian date, so tag it gregorian regardless of the
-            // owner's display calendar — the backend renders both calendars back.
-            dateCalendar: 'gregorian',
-            note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-            paymentMethod: _paymentMethod,
-            itemName: _trackItem && _itemName.text.trim().isNotEmpty
-                ? _itemName.text.trim()
-                : null,
-            quantity: _trackItem && _quantity.text.trim().isNotEmpty
-                ? _quantity.text.trim()
-                : null,
-            unitId: _trackItem ? _unitId : null,
-          );
-      // Refresh the list and the item suggestions so the new expense (and any new item) appears.
-      ref.invalidate(expensesForPeriodProvider);
+      final api = ref.read(expensesApiProvider);
+      final expense = widget.expense;
+      if (expense == null) {
+        await api.record(
+          categoryId: _categoryId!,
+          amountMinor: amountMinor,
+          date: date,
+          // The date picker returns a Gregorian date, so tag it gregorian regardless of the
+          // owner's display calendar — the backend renders both calendars back.
+          dateCalendar: 'gregorian',
+          note: note.isEmpty ? null : note,
+          paymentMethod: _paymentMethod,
+          itemName: itemName,
+          quantity: quantity,
+          unitId: unitId,
+        );
+      } else {
+        await api.update(
+          expense.id,
+          // Only when changed: an expense filed under a since-archived category can still be
+          // edited, because re-sending that category would be refused.
+          categoryId: _categoryId != expense.categoryId ? _categoryId : null,
+          amountMinor: amountMinor,
+          date: date,
+          dateCalendar: 'gregorian',
+          // Always sent, so emptying the field clears the note.
+          note: note,
+          paymentMethod: _paymentMethod,
+          itemName: itemName,
+          quantity: quantity,
+          unitId: unitId,
+          clearItem: !_trackItem && expense.item != null,
+        );
+      }
+      // Refresh every month view and the item suggestions so the change (and any new item) shows.
+      invalidateMonthData(ref);
       ref.invalidate(itemsProvider);
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted) {
+        Navigator.of(context)
+            .pop(_editing ? ExpenseFormResult.updated : ExpenseFormResult.recorded);
+      }
+    } on ApiException catch (error) {
+      setState(() => _submitError = error.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final settings = ref.read(settingsProvider);
+    if (!await confirmDeleteExpense(context, settings)) return;
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
+    try {
+      await ref.read(expensesApiProvider).delete(widget.expense!.id);
+      invalidateMonthData(ref);
+      if (mounted) Navigator.of(context).pop(ExpenseFormResult.deleted);
     } on ApiException catch (error) {
       setState(() => _submitError = error.message);
     } finally {
@@ -129,7 +254,9 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                settings.say('ወጪ መዝግብ', 'Record an expense'),
+                _editing
+                    ? settings.say('ወጪ አስተካክል', 'Edit expense')
+                    : settings.say('ወጪ መዝግብ', 'Record an expense'),
                 style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 20),
@@ -159,7 +286,9 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
                 ),
                 data: (list) => DropdownButtonFormField<String>(
                   key: const Key('expense-category'),
-                  initialValue: _categoryId,
+                  // An archived category is not offered, so an old expense filed under one has to
+                  // be re-filed rather than crash the picker.
+                  initialValue: list.any((c) => c.id == _categoryId) ? _categoryId : null,
                   decoration: InputDecoration(
                     labelText: settings.say('ምድብ', 'Category'),
                     prefixIcon: const Icon(Icons.category_outlined),
@@ -190,7 +319,7 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
                 ),
                 items: [
                   for (final m in _paymentMethods)
-                    DropdownMenuItem(value: m, child: Text(_paymentLabel(m, settings))),
+                    DropdownMenuItem(value: m, child: Text(paymentMethodLabel(m, settings))),
                 ],
                 onChanged: (v) => setState(() => _paymentMethod = v ?? 'cash'),
               ),
@@ -231,14 +360,31 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
               FilledButton(
                 key: const Key('expense-submit'),
                 onPressed: _submitting ? null : _submit,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 16)),
                 child: _submitting
                     ? const SizedBox(
-                        height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text(settings.say('መዝግብ', 'Save expense')),
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        _editing
+                            ? settings.say('ለውጡን አስቀምጥ', 'Save changes')
+                            : settings.say('መዝግብ', 'Save expense'),
+                      ),
               ),
+              if (_editing) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  key: const Key('expense-delete'),
+                  onPressed: _submitting ? null : _delete,
+                  icon: Icon(Icons.delete_outline_rounded, color: theme.colorScheme.error),
+                  label: Text(
+                    settings.say('ሰርዝ', 'Delete expense'),
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -277,9 +423,7 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
                   key: const Key('expense-quantity'),
                   controller: _quantity,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: settings.say('ብዛት', 'Quantity'),
-                  ),
+                  decoration: InputDecoration(labelText: settings.say('ብዛት', 'Quantity')),
                   validator: (v) {
                     if (!_trackItem) return null;
                     final value = num.tryParse((v ?? '').trim());
@@ -303,20 +447,21 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
                   ),
                   data: (list) => DropdownButtonFormField<String>(
                     key: const Key('expense-unit'),
-                    initialValue: _unitId,
+                    initialValue: list.any((u) => u.id == _unitId) ? _unitId : null,
                     isExpanded: true,
                     decoration: InputDecoration(labelText: settings.say('ክፍል', 'Unit')),
                     items: [
                       for (final u in list)
                         DropdownMenuItem(
                           value: u.id,
-                          child: Text('${u.code} · ${settings.isAmharic ? (u.nameAm ?? u.name) : u.name}'),
+                          child: Text(
+                            '${u.code} · ${settings.isAmharic ? (u.nameAm ?? u.name) : u.name}',
+                          ),
                         ),
                     ],
                     onChanged: (v) => setState(() => _unitId = v),
-                    validator: (v) => (_trackItem && v == null)
-                        ? settings.say('ክፍል ይምረጡ', 'Pick a unit')
-                        : null,
+                    validator: (v) =>
+                        (_trackItem && v == null) ? settings.say('ክፍል ይምረጡ', 'Pick a unit') : null,
                   ),
                 ),
               ),
@@ -326,14 +471,6 @@ class _ExpenseFormSheetState extends ConsumerState<ExpenseFormSheet> {
       ),
     );
   }
-
-  String _paymentLabel(String method, AppSettings settings) => switch (method) {
-        'cash' => settings.say('ጥሬ ገንዘብ', 'Cash'),
-        'telebirr' => 'Telebirr',
-        'bank' => settings.say('ባንክ', 'Bank'),
-        'card' => settings.say('ካርድ', 'Card'),
-        _ => settings.say('ሌላ', 'Other'),
-      };
 }
 
 class _DateField extends StatelessWidget {

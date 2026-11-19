@@ -34,8 +34,9 @@ implementation drifts, one of the two suites fails.
 
 ## Notes
 
-- The figures on the dashboard are sample data (`features/dashboard/sample_data.dart`). The API that
-  will replace them is not built yet.
+- The dashboard reads `GET /api/reports/summary` for the month in view; the Fixed tab reads
+  `/api/fixed-expenses`. Month-keyed providers live in `shared/month_data.dart`, and anything that
+  writes calls `invalidateMonthData` so every tab refreshes together.
 - `todayProvider` is the single source of "now" — nothing else calls `DateTime.now()`, so tests can
   pin the date and every derived value follows.
 - Amharic renders from system fonts on iOS. Android coverage of Ethiopic is inconsistent, so a

@@ -9,7 +9,7 @@
 /// 3. **Typed errors**: every Dio failure is converted to an [ApiException] before it leaves the
 ///    client, so a caller catches one exception type and never imports Dio.
 ///
-/// The thin verb methods ([get], [post], [patch], [delete]) return decoded JSON. Data sources layer
+/// The thin verb methods ([get], [post], [patch], [put], [delete]) return decoded JSON. Data sources layer
 /// DTO mapping on top; they never touch Dio directly.
 library;
 
@@ -81,6 +81,8 @@ class ApiClient {
 
   Future<Object?> patch(String path, {Object? body}) =>
       _send(() => _dio.patch(path, data: body));
+
+  Future<Object?> put(String path, {Object? body}) => _send(() => _dio.put(path, data: body));
 
   /// Returns the decoded body, or null for a 204 No Content.
   Future<Object?> delete(String path) => _send(() => _dio.delete(path));

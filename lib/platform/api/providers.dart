@@ -11,10 +11,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'api_client.dart';
 import 'auth_token_store.dart';
 import 'resources/auth_api.dart';
+import 'resources/budgets_api.dart';
 import 'resources/categories_api.dart';
 import 'resources/expenses_api.dart';
+import 'resources/fixed_expenses_api.dart';
 import 'resources/items_api.dart';
 import 'resources/reports_api.dart';
+import 'resources/summary_api.dart';
 import 'resources/units_api.dart';
 
 /// The backend base URL.
@@ -69,4 +72,16 @@ final itemsApiProvider = Provider<ItemsApi>(
 
 final itemUsageReportsApiProvider = Provider<ItemUsageReportsApi>(
   (ref) => ItemUsageReportsApi(ref.watch(apiClientProvider)),
+);
+
+final monthlySummaryApiProvider = Provider<MonthlySummaryApi>(
+  (ref) => MonthlySummaryApi(ref.watch(apiClientProvider)),
+);
+
+final fixedExpensesApiProvider = Provider<FixedExpensesApi>(
+  (ref) => FixedExpensesApi(ref.watch(apiClientProvider)),
+);
+
+final budgetsApiProvider = Provider<BudgetsApi>(
+  (ref) => BudgetsApi(ref.watch(apiClientProvider)),
 );

@@ -14,7 +14,7 @@ import '../../../../platform/settings.dart';
 import '../../../../shared/widgets/section_card.dart';
 import '../../../../shared_kernel/money.dart';
 import '../../../../shared_kernel/period.dart';
-import '../../sample_data.dart';
+import '../../month_summary.dart';
 
 class DailyChartCard extends StatefulWidget {
   const DailyChartCard({
@@ -25,7 +25,7 @@ class DailyChartCard extends StatefulWidget {
     this.todayIndex,
   });
 
-  final SampleMonth month;
+  final MonthSummary month;
   final AppSettings settings;
   final Period period;
 
@@ -53,7 +53,10 @@ class _DailyChartCardState extends State<DailyChartCard> {
     final month = widget.month;
     final currency = settings.currency;
     final peak = Money(month.peakDaily, currency);
-    final average = Money(month.averageDaily, currency);
+    final average = Money(
+      month.averageDaily(days: widget.todayIndex == null ? null : widget.todayIndex! + 1),
+      currency,
+    );
     final selected = _selected;
 
     return SectionCard(
@@ -88,7 +91,10 @@ class _DailyChartCardState extends State<DailyChartCard> {
                           if (widget.todayIndex != null) widget.todayIndex!,
                           if (selected != null) selected,
                         },
-                        labelIndex: progress == 1 ? (selected ?? month.peakDayIndex) : null,
+                        // No callout on an empty month: a "0" over nothing says nothing.
+                        labelIndex: progress == 1 && (selected != null || month.peakDaily > 0)
+                            ? (selected ?? month.peakDayIndex)
+                            : null,
                         labelText: _dayLabel(selected ?? month.peakDayIndex),
                         barColor: scheme.primary,
                         mutedBarColor: scheme.primary.withValues(alpha: 0.28),

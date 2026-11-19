@@ -12,18 +12,16 @@ import 'package:flutter/material.dart';
 import '../../../../platform/settings.dart';
 import '../../../../platform/theme.dart';
 import '../../../../shared_kernel/money.dart';
-import '../../sample_data.dart';
+import '../../month_summary.dart';
 
 class SpendSummaryCard extends StatelessWidget {
   const SpendSummaryCard({
     super.key,
     required this.month,
-    required this.previous,
     required this.settings,
   });
 
-  final SampleMonth month;
-  final SampleMonth previous;
+  final MonthSummary month;
   final AppSettings settings;
 
   @override
@@ -70,7 +68,7 @@ class SpendSummaryCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     _ChangeLine(
                       current: total,
-                      previous: previous.grandTotal,
+                      previous: month.previousTotal,
                       settings: settings,
                     ),
                   ],

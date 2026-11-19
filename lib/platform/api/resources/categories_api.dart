@@ -83,6 +83,12 @@ class CategoriesApi {
     return CategoryDto.fromJson((data as Map).cast<String, Object?>());
   }
 
+  /// Bring an archived category back.
+  Future<CategoryDto> restore(String id) async {
+    final data = await _client.post('/api/categories/$id/restore');
+    return CategoryDto.fromJson((data as Map).cast<String, Object?>());
+  }
+
   /// Null when deleted (204); the archived category when it was in use (200).
   Future<CategoryDto?> remove(String id) async {
     final data = await _client.delete('/api/categories/$id');

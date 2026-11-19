@@ -165,9 +165,12 @@ class ExpensesApi {
     String? until,
     String dateCalendar = 'gregorian',
     List<String> categoryIds = const [],
+    List<String> paymentMethods = const [],
+    String? search,
     int limit = 50,
     int offset = 0,
   }) async {
+    final text = search?.trim();
     final data = await _client.get('/api/expenses', query: {
       'period_year': periodYear,
       'period_month': periodMonth,
@@ -176,6 +179,8 @@ class ExpensesApi {
       'until': until,
       'date_calendar': dateCalendar,
       if (categoryIds.isNotEmpty) 'category_id': categoryIds,
+      if (paymentMethods.isNotEmpty) 'payment_method': paymentMethods,
+      if (text != null && text.isNotEmpty) 'q': text,
       'limit': limit,
       'offset': offset,
     });

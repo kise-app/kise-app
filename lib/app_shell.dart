@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/expenses/presentation/expenses_screen.dart';
+import 'features/fixed_expenses/presentation/fixed_expenses_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
 import 'platform/settings.dart';
 
@@ -33,7 +34,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         children: const [
           DashboardScreen(),
           ExpensesScreen(),
-          _ComingSoon(tab: 'fixed'),
+          FixedExpensesScreen(),
           SettingsScreen(),
         ],
       ),
@@ -73,62 +74,6 @@ class _AppShellState extends ConsumerState<AppShell> {
               label: settings.say('ማስተካከያ', 'Settings'),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A placeholder that says what is coming rather than pretending to be empty.
-class _ComingSoon extends ConsumerWidget {
-  const _ComingSoon({required this.tab});
-
-  final String tab;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final settings = ref.watch(settingsProvider);
-    final theme = Theme.of(context);
-    final (title, body) = switch (tab) {
-      'expenses' => (
-        settings.say('ወጪዎች', 'Expenses'),
-        settings.say(
-          'የተመዘገቡ ወጪዎች ዝርዝር በዚህ ይታያል።',
-          'Your recorded expenses will be listed here.',
-        ),
-      ),
-      _ => (
-        settings.say('ቋሚ ወርሃዊ ወጪ', 'Fixed monthly expenses'),
-        settings.say(
-          'ቤት ኪራይ፣ ኢንተርኔት እና ሌሎች ወርሃዊ ክፍያዎች።',
-          'Rent, internet and other monthly commitments.',
-        ),
-      ),
-    };
-
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.hourglass_empty_outlined,
-                size: 44,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                body,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

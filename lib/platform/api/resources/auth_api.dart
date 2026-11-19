@@ -109,6 +109,18 @@ class AuthApi {
     return ProfileDto.fromJson((data as Map).cast<String, Object?>());
   }
 
+  /// Change the password. A wrong current password is an [ApiException] with code
+  /// `current_password_incorrect`.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _client.post('/api/auth/password', body: {
+      'current_password': currentPassword,
+      'new_password': newPassword,
+    });
+  }
+
   /// Forget the token. The next request goes out unauthenticated.
   Future<void> signOut() => _tokenStore.clear();
 }

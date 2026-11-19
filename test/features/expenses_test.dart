@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kise/features/expenses/presentation/expense_form_sheet.dart';
 import 'package:kise/features/expenses/presentation/expenses_screen.dart';
+import 'package:kise/platform/api/api.dart';
 import 'package:kise/platform/settings.dart';
 import 'package:kise/platform/theme.dart';
 import 'package:kise/shared_kernel/period.dart';
@@ -177,6 +178,152 @@ void main() {
       expect(expenses.lastRecord!['item_name'], 'Sugar');
       expect(expenses.lastRecord!['quantity'], '12');
       expect(expenses.lastRecord!['unit_id'], 'u1');
+    });
+  });
+
+  group('editing and deleting', () {
+    ExpenseDto sugar() => expenseRow(
+          id: 'e2',
+          amountMinor: 48000,
+          categoryName: 'Groceries',
+          item: {
+            'item_id': 'i1',
+            'item_name': 'Sugar',
+            'item_name_am': null,
+            'quantity': '12',
+            'quantity_milli': 12000,
+            'unit_id': 'u1',
+            'unit_code': 'kg',
+            'unit_name': 'Kilogram',
+            'unit_name_am': null,
+          },
+        );
+
+    testWidgets('tapping an expense opens it pre-filled, and saving sends a PATCH',
+        (tester) async {
+      final expenses = FakeExpensesApi(page: pageOf([sugar()]));
+      await tester.pumpWidget(_host(
+        child: const ExpensesScreen(),
+        overrides: fakeApiOverrides(
+          expenses: expenses,
+          categories: FakeCategoriesApi([category('cat-1', 'Groceries')]),
+          units: FakeUnitsApi([unit('u1', 'kg', 'Kilogram')]),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('expense-tile-e2')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit expense'), findsOneWidget);
+      expect(tester.widget<TextField>(find.descendant(
+              of: find.byKey(const Key('expense-amount')), matching: find.byType(TextField)))
+          .controller!
+          .text, '480');
+      expect(find.text('Sugar'), findsWidgets);
+
+      await tester.enterText(find.byKey(const Key('expense-amount')), '500');
+      await tester.tap(find.byKey(const Key('expense-submit')));
+      await tester.pumpAndSettle();
+
+      expect(expenses.lastRecord, isNull, reason: 'editing must not record a new expense');
+      expect(expenses.lastUpdate!['id'], 'e2');
+      expect(expenses.lastUpdate!['amount_minor'], 50000);
+      expect(expenses.lastUpdate!['date'], '2026-09-04');
+      // Unchanged category is not re-sent; the item line is kept.
+      expect(expenses.lastUpdate!['category_id'], isNull);
+      expect(expenses.lastUpdate!['item_name'], 'Sugar');
+      expect(expenses.lastUpdate!['clear_item'], isFalse);
+    });
+
+    testWidgets('switching the item line off clears it', (tester) async {
+      final expenses = FakeExpensesApi();
+      await tester.pumpWidget(_host(
+        child: ExpenseFormSheet(expense: sugar()),
+        overrides: fakeApiOverrides(
+          expenses: expenses,
+          categories: FakeCategoriesApi([category('cat-1', 'Groceries')]),
+          units: FakeUnitsApi([unit('u1', 'kg', 'Kilogram')]),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('expense-track-item')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('expense-submit')));
+      await tester.pumpAndSettle();
+
+      expect(expenses.lastUpdate!['clear_item'], isTrue);
+      expect(expenses.lastUpdate!['item_name'], isNull);
+    });
+
+    testWidgets('delete from the form asks first', (tester) async {
+      final expenses = FakeExpensesApi();
+      await tester.pumpWidget(_host(
+        child: ExpenseFormSheet(expense: sugar()),
+        overrides: fakeApiOverrides(
+          expenses: expenses,
+          categories: FakeCategoriesApi([category('cat-1', 'Groceries')]),
+          units: FakeUnitsApi([unit('u1', 'kg', 'Kilogram')]),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('expense-delete')));
+      await tester.pumpAndSettle();
+      expect(find.text('Delete this expense?'), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(expenses.deleted, isEmpty);
+
+      await tester.tap(find.byKey(const Key('expense-delete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-delete')));
+      await tester.pumpAndSettle();
+      expect(expenses.deleted, ['e2']);
+    });
+
+    testWidgets('swiping an expense away deletes it after confirmation', (tester) async {
+      final expenses = FakeExpensesApi(page: pageOf([sugar()]));
+      await tester.pumpWidget(_host(
+        child: const ExpensesScreen(),
+        overrides: fakeApiOverrides(expenses: expenses),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.drag(find.byKey(const Key('expense-tile-e2')), const Offset(-600, 0));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('confirm-delete')));
+      await tester.pumpAndSettle();
+
+      expect(expenses.deleted, ['e2']);
+      expect(find.text('Expense deleted'), findsOneWidget);
+    });
+
+    testWidgets('a new expense defaults to the pinned today, not the wall clock', (tester) async {
+      final expenses = FakeExpensesApi();
+      await tester.pumpWidget(_host(
+        child: const ExpenseFormSheet(),
+        overrides: [
+          todayProvider.overrideWithValue(DateTime.utc(2027, 3, 10)),
+          ...fakeApiOverrides(
+            expenses: expenses,
+            categories: FakeCategoriesApi([category('c1', 'Taxi')]),
+          ),
+        ],
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('expense-amount')), '50');
+      await tester.tap(find.byKey(const Key('expense-category')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Taxi').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('expense-submit')));
+      await tester.pumpAndSettle();
+
+      expect(expenses.lastRecord!['date'], '2027-03-10');
     });
   });
 }
