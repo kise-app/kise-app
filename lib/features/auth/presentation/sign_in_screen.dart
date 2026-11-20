@@ -19,6 +19,7 @@ import '../../../platform/theme.dart';
 import '../../../shared/widgets/kise_logo.dart';
 import '../../../shared/widgets/option_card.dart';
 import '../../../shared_kernel/money.dart';
+import '../social_sign_in.dart';
 import '../../../shared/widgets/reveal.dart';
 
 class SignInScreen extends ConsumerStatefulWidget {
@@ -47,6 +48,36 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     _password.dispose();
     _displayName.dispose();
     super.dispose();
+  }
+
+  String? _socialError;
+
+  /// Google is offered when the server has it on and this build carries the client ids.
+  bool get _showGoogle =>
+      (ref.watch(signInProvidersProvider).valueOrNull?.google ?? false) &&
+      ref.read(socialAuthProvider).googleConfigured;
+
+  Future<void> _signInWithGoogle() async {
+    final settings = ref.read(settingsProvider);
+    setState(() => _socialError = null);
+    final SocialCredential credential;
+    try {
+      credential = await ref.read(socialAuthProvider).google();
+    } on SocialSignInCancelled {
+      return;
+    } catch (_) {
+      setState(() => _socialError =
+          settings.say('በGoogle መግባት አልተቻለም።', 'Google sign-in did not work. Try again.'));
+      return;
+    }
+    await ref.read(sessionProvider.notifier).signInWithSocial(
+          provider: 'google',
+          token: credential.token,
+          displayName: credential.displayName,
+          calendar: settings.calendar.wire,
+          language: settings.language.wire,
+          currency: settings.currency,
+        );
   }
 
   Future<void> _submit() async {
@@ -302,6 +333,49 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     ),
             ),
           ),
+          if (_showGoogle) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    settings.say('ወይም', 'or'),
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ),
+                const Expanded(child: Divider()),
+              ],
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              key: const Key('signin-google'),
+              onPressed: busy ? null : _signInWithGoogle,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              icon: const Text(
+                'G',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: Color(0xFF4285F4),
+                ),
+              ),
+              label: Text(settings.say('በGoogle ይቀጥሉ', 'Continue with Google')),
+            ),
+          ],
+          if (_socialError != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _socialError!,
+              key: const Key('signin-social-error'),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.error),
+            ),
+          ],
           const SizedBox(height: 12),
           Wrap(
             alignment: WrapAlignment.center,

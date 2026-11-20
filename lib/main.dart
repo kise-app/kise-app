@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_shell.dart';
 import 'features/auth/presentation/sign_in_screen.dart';
+import 'features/auth/social_sign_in.dart';
 import 'platform/preferences_store.dart';
 import 'platform/session/session_controller.dart';
 import 'platform/settings.dart';
@@ -21,6 +22,11 @@ Future<void> main() async {
     ProviderScope(
       overrides: [
         settingsStoreProvider.overrideWithValue(store),
+        // Signing out of Kise also forgets the Google session, so the account picker shows next
+        // time. A failure there must not block signing out.
+        signOutHooksProvider.overrideWith(
+          (ref) => () => ref.read(socialAuthProvider).signOut().catchError((_) {}),
+        ),
         // The API base URL is not overridden here on purpose: apiConfigProvider reads it from
         // API_URL (a --dart-define), so a physical device can be pointed at the Mac's LAN IP
         // at run time without editing source. See platform/api/providers.dart.

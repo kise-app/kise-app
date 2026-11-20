@@ -1,3 +1,5 @@
 {
-  "API_URL": "https://kise-app-1d266401bf6a.herokuapp.com"
+  "API_URL": "https://kise-app-1d266401bf6a.herokuapp.com",
+  "GOOGLE_IOS_CLIENT_ID": "917567057445-ji1vk8fi9hmm98fg4qgpd3nn4esij496.apps.googleusercontent.com",
+  "GOOGLE_SERVER_CLIENT_ID": "917567057445-2aeu6s93s5eq02cqs7bmiud8au3ml6pv.apps.googleusercontent.com"
 }

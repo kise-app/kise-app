@@ -88,12 +88,45 @@ class SessionController extends AsyncNotifier<SessionState> {
     });
   }
 
+  /// Sign in with a provider's token. The server makes the account the first time, in the
+  /// calendar, language and currency chosen on this device.
+  Future<void> signInWithSocial({
+    required String provider,
+    required String token,
+    String? nonce,
+    String? displayName,
+    String? calendar,
+    String? language,
+    String? currency,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final result = await _auth.social(
+        provider: provider,
+        token: token,
+        nonce: nonce,
+        displayName: displayName,
+        calendar: calendar,
+        language: language,
+        currency: currency,
+      );
+      ref.read(profileSyncProvider).apply(result.owner);
+      return SignedIn(result.owner);
+    });
+  }
+
   Future<void> signOut() async {
     ref.read(profileSyncProvider).reset();
+    // So the next Google sign-in offers the account picker instead of re-using this account.
+    await ref.read(signOutHooksProvider).call();
     await _auth.signOut();
     state = const AsyncData(SignedOut());
   }
 }
+
+/// Extra sign-out work (forgetting a provider session). The app wires the social provider's
+/// sign-out in here; the default does nothing, so the session layer needs no plugin.
+final signOutHooksProvider = Provider<Future<void> Function()>((ref) => () async {});
 
 final sessionProvider =
     AsyncNotifierProvider<SessionController, SessionState>(SessionController.new);

@@ -680,9 +680,12 @@ class FakeBudgetsApi implements BudgetsApi {
 
 /// Records profile pushes and password changes; never touches the token store.
 class FakeAuthApi implements AuthApi {
-  FakeAuthApi({this.passwordError});
+  FakeAuthApi({this.passwordError, this.signInProviders = const SignInProvidersDto(), this.socialError});
 
   final ApiException? passwordError;
+  final SignInProvidersDto signInProviders;
+  final ApiException? socialError;
+  final List<Map<String, Object?>> socialCalls = [];
   final List<Map<String, Object?>> updates = [];
   final List<Map<String, String>> passwordChanges = [];
 
@@ -704,6 +707,36 @@ class FakeAuthApi implements AuthApi {
 
   @override
   Future<ProfileDto> me() async => profile();
+
+  @override
+  Future<SignInProvidersDto> providers() async => signInProviders;
+
+  @override
+  Future<AuthResultDto> social({
+    required String provider,
+    required String token,
+    String? nonce,
+    String? displayName,
+    String? calendar,
+    String? language,
+    String? currency,
+  }) async {
+    socialCalls.add({
+      'provider': provider,
+      'token': token,
+      'display_name': displayName,
+      'calendar': calendar,
+      'language': language,
+      'currency': currency,
+    });
+    if (socialError != null) throw socialError!;
+    return AuthResultDto(
+      token: 'kise-token',
+      expiresAt: '2026-12-01T00:00:00+00:00',
+      owner: profile(displayName: displayName ?? 'Test'),
+      created: true,
+    );
+  }
 
   @override
   Future<AuthResultDto> login({required String email, required String password}) async =>

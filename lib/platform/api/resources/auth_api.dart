@@ -45,16 +45,36 @@ class AuthResultDto {
     required this.token,
     required this.expiresAt,
     required this.owner,
+    this.created = false,
   });
 
   final String token;
   final String expiresAt;
   final ProfileDto owner;
 
+  /// True when this sign-in made the account (social sign-in can do either).
+  final bool created;
+
   factory AuthResultDto.fromJson(Map<String, Object?> json) => AuthResultDto(
         token: json['token'] as String,
         expiresAt: json['expires_at'] as String,
         owner: ProfileDto.fromJson((json['owner'] as Map).cast<String, Object?>()),
+        created: (json['created'] as bool?) ?? false,
+      );
+}
+
+/// Which sign-in methods the server has set up. Email and password is always on.
+class SignInProvidersDto {
+  const SignInProvidersDto({this.google = false, this.apple = false, this.facebook = false});
+
+  final bool google;
+  final bool apple;
+  final bool facebook;
+
+  factory SignInProvidersDto.fromJson(Map<String, Object?> json) => SignInProvidersDto(
+        google: (json['google'] as bool?) ?? false,
+        apple: (json['apple'] as bool?) ?? false,
+        facebook: (json['facebook'] as bool?) ?? false,
       );
 }
 
@@ -89,6 +109,36 @@ class AuthApi {
     final data = await _client.post('/api/auth/login', body: {
       'email': email,
       'password': password,
+    });
+    final result = AuthResultDto.fromJson((data as Map).cast<String, Object?>());
+    await _tokenStore.write(result.token);
+    return result;
+  }
+
+  Future<SignInProvidersDto> providers() async {
+    final data = await _client.get('/api/auth/providers');
+    return SignInProvidersDto.fromJson((data as Map).cast<String, Object?>());
+  }
+
+  /// Sign in with a provider's token — Google's ID token, for now. Makes the account the first
+  /// time, using the calendar/language/currency given.
+  Future<AuthResultDto> social({
+    required String provider,
+    required String token,
+    String? nonce,
+    String? displayName,
+    String? calendar,
+    String? language,
+    String? currency,
+  }) async {
+    final data = await _client.post('/api/auth/social', body: {
+      'provider': provider,
+      'token': token,
+      if (nonce != null) 'nonce': nonce,
+      if (displayName != null) 'display_name': displayName,
+      if (calendar != null) 'calendar': calendar,
+      if (language != null) 'language': language,
+      if (currency != null) 'currency': currency,
     });
     final result = AuthResultDto.fromJson((data as Map).cast<String, Object?>());
     await _tokenStore.write(result.token);

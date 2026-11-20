@@ -33,6 +33,10 @@ dependencies:
 
   # The assistant: voice notes (record, into a temp file from path_provider) and receipt photos
   # (image_picker). Pinned exactly: they touch the microphone and camera.
+  # Sign in with Google. The OAuth client ids come from env/*.json (GOOGLE_IOS_CLIENT_ID,
+  # GOOGLE_SERVER_CLIENT_ID) and the iOS URL scheme from ios/Flutter/Google.xcconfig.
+  google_sign_in: 7.2.0
+
   record: 7.2.0
   image_picker: 1.2.4
   path_provider: 2.1.6

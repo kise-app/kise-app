@@ -1,0 +1,6 @@
+// Sign in with Google on iOS: the URL scheme Google returns to after its sign-in sheet.
+// It is your iOS OAuth client id reversed — Google Cloud Console shows it as "iOS URL scheme":
+//   com.googleusercontent.apps.<the part of the client id before .apps.googleusercontent.com>
+// Not a secret: it ships inside the app. Leave the placeholder until Google is set up; the
+// Google button stays hidden while GOOGLE_IOS_CLIENT_ID in env/*.json is empty.
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.917567057445-ji1vk8fi9hmm98fg4qgpd3nn4esij496
