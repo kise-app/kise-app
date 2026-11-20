@@ -7,7 +7,10 @@
 ///   amount, date in the person's calendar, payment method and anything worth double-checking. The
 ///   person unticks what is wrong, taps a draft to adjust it in the normal expense form, and saves
 ///   the rest in one go. Nothing is recorded until they do.
-/// * **Ask** — "how much on food this month?" is answered from the server's own figures.
+///   Monthly commitments are understood too: "rent 8,000 every month on the 5th" becomes a new
+///   fixed monthly expense, and "I paid the rent" marks the existing one paid for this month.
+/// * **Ask** — "how much on food this month?", typed or spoken, is answered from the server's own
+///   figures.
 ///
 /// The microphone and camera sit behind [VoiceRecorder] and [ReceiptPicker] (see `capture.dart`),
 /// so this widget is testable without plugins. Voice notes stop on their own after a minute.
@@ -101,7 +104,14 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
   DraftReplyDto? _reply;
   List<DraftExpenseDto> _drafts = [];
   List<bool> _selected = [];
+  List<FixedDraftDto> _fixed = [];
+  List<bool> _fixedSelected = [];
+  List<PaymentDraftDto> _payments = [];
+  List<bool> _paymentSelected = [];
   String? _answer;
+
+  /// What was heard when the question was asked out loud.
+  String? _heard;
   String? _error;
 
   AppSettings get _settings => ref.read(settingsProvider);
@@ -158,6 +168,13 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         _reply = reply;
         _drafts = [...reply.drafts];
         _selected = List<bool>.filled(reply.drafts.length, true, growable: true);
+        _fixed = [...reply.fixedDrafts];
+        _fixedSelected = List<bool>.filled(reply.fixedDrafts.length, true, growable: true);
+        _payments = [...reply.paymentDrafts];
+        // A month already marked paid starts unticked: saying it twice should not pay twice.
+        _paymentSelected = [
+          for (final p in reply.paymentDrafts) !p.warnings.contains('already_paid'),
+        ];
       });
     } catch (error) {
       if (mounted) setState(() => _error = _describe(error));
@@ -175,6 +192,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         _phase = _Phase.working;
         _error = null;
         _answer = null;
+        _heard = null;
       });
       try {
         final answer = await ref.read(assistantApiProvider).ask(text, today: _today);
@@ -234,6 +252,10 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       setState(() => _error = _settings.say('ምንም አልተቀዳም።', 'Nothing was recorded.'));
       return;
     }
+    if (_mode == _Mode.ask) {
+      await _askOutLoud(audio);
+      return;
+    }
     await _run(
       (api) => api.readVoice(
         audio.bytes,
@@ -242,6 +264,35 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         today: _today,
       ),
     );
+  }
+
+  Future<void> _askOutLoud(CapturedMedia audio) async {
+    setState(() {
+      _phase = _Phase.working;
+      _error = null;
+      _answer = null;
+      _heard = null;
+    });
+    try {
+      final reply = await ref
+          .read(assistantApiProvider)
+          .askVoice(
+            audio.bytes,
+            contentType: audio.contentType,
+            filename: audio.filename,
+            today: _today,
+          );
+      if (mounted) {
+        setState(() {
+          _answer = reply.answer;
+          _heard = reply.transcript;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = _describe(error));
+    } finally {
+      if (mounted) setState(() => _phase = _Phase.idle);
+    }
   }
 
   Future<void> _pickReceipt(ReceiptSource source) async {
@@ -266,23 +317,44 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
 
   // -- saving -------------------------------------------------------------
 
+  int get _selectedCount =>
+      _selected.where((s) => s).length +
+      _fixedSelected.where((s) => s).length +
+      _paymentSelected.where((s) => s).length;
+
+  /// Save every ticked draft: record expenses, schedule commitments, mark payments. What fails stays
+  /// on screen (and what succeeded leaves it), so a retry can never save anything twice.
   Future<void> _saveSelected() async {
-    final chosen = [
-      for (var i = 0; i < _drafts.length; i++)
-        if (_selected[i]) i,
-    ];
-    if (chosen.isEmpty) return;
+    if (_selectedCount == 0) return;
     setState(() {
       _phase = _Phase.saving;
       _error = null;
     });
-    final api = ref.read(expensesApiProvider);
-    final saved = <int>{};
+    final expenses = ref.read(expensesApiProvider);
+    final fixed = ref.read(fixedExpensesApiProvider);
+    var saved = 0;
     String? failure;
-    for (final i in chosen) {
-      final draft = _drafts[i];
+
+    Future<bool> attempt(Future<void> Function() save) async {
       try {
-        await api.record(
+        await save();
+        saved++;
+        return true;
+      } on ApiException catch (error) {
+        failure ??= error.message;
+        return false;
+      }
+    }
+
+    final keptDrafts = <DraftExpenseDto>[];
+    for (var i = 0; i < _drafts.length; i++) {
+      final draft = _drafts[i];
+      if (!_selected[i]) {
+        keptDrafts.add(draft);
+        continue;
+      }
+      final ok = await attempt(
+        () => expenses.record(
           categoryId: draft.categoryId,
           amountMinor: draft.amount.minorUnits,
           date: draft.spentOn.gregorian,
@@ -292,29 +364,66 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
           itemName: draft.item?.itemName,
           quantity: draft.item?.quantity,
           unitId: draft.item?.unitId,
-        );
-        saved.add(i);
-      } on ApiException catch (error) {
-        failure ??= error.message;
-      }
+        ),
+      );
+      if (!ok) keptDrafts.add(draft);
     }
-    if (saved.isNotEmpty) invalidateMonthData(ref);
+
+    final keptFixed = <FixedDraftDto>[];
+    for (var i = 0; i < _fixed.length; i++) {
+      final draft = _fixed[i];
+      if (!_fixedSelected[i]) {
+        keptFixed.add(draft);
+        continue;
+      }
+      final ok = await attempt(
+        () => fixed.schedule(
+          categoryId: draft.categoryId,
+          title: draft.title,
+          amountMinor: draft.amount.minorUnits,
+          startPeriod: draft.startPeriod,
+          dueDay: draft.dueDay,
+          note: draft.note,
+        ),
+      );
+      if (!ok) keptFixed.add(draft);
+    }
+
+    final keptPayments = <PaymentDraftDto>[];
+    for (var i = 0; i < _payments.length; i++) {
+      final draft = _payments[i];
+      if (!_paymentSelected[i]) {
+        keptPayments.add(draft);
+        continue;
+      }
+      final ok = await attempt(
+        () => fixed.settle(
+          draft.fixedExpenseId,
+          draft.period,
+          amountMinor: draft.amount.minorUnits,
+          settledOn: draft.paidOn.gregorian,
+        ),
+      );
+      if (!ok) keptPayments.add(draft);
+    }
+
+    if (saved > 0) invalidateMonthData(ref);
     if (!mounted) return;
     if (failure == null) {
-      Navigator.of(context).pop(saved.length);
+      Navigator.of(context).pop(saved);
       return;
     }
-    // Keep only what did not save, so retrying cannot record anything twice.
     setState(() {
-      _drafts = [
-        for (var i = 0; i < _drafts.length; i++)
-          if (!saved.contains(i)) _drafts[i],
-      ];
-      _selected = List<bool>.filled(_drafts.length, true, growable: true);
+      _drafts = keptDrafts;
+      _selected = List<bool>.filled(keptDrafts.length, true, growable: true);
+      _fixed = keptFixed;
+      _fixedSelected = List<bool>.filled(keptFixed.length, true, growable: true);
+      _payments = keptPayments;
+      _paymentSelected = List<bool>.filled(keptPayments.length, true, growable: true);
       _phase = _Phase.idle;
       _error = _settings.say(
-        '${saved.length} ተመዝግበዋል፤ የቀሩት አልተመዘገቡም፦ $failure',
-        '${saved.length} saved; the rest were not: $failure',
+        '$saved ተቀምጠዋል፤ የቀሩት አልተቀመጡም፦ $failure',
+        '$saved saved; the rest were not: $failure',
       );
     });
   }
@@ -352,7 +461,8 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
     final scheme = theme.colorScheme;
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
     final busy = _phase == _Phase.working || _phase == _Phase.saving;
-    final selectedCount = _selected.where((s) => s).length;
+    final selectedCount = _selectedCount;
+    final hasDrafts = _drafts.isNotEmpty || _fixed.isNotEmpty || _payments.isNotEmpty;
     // Category names as the person reads them; the draft carries the server's names as fallback.
     final categories = {
       for (final c in ref.watch(categoriesProvider).valueOrNull ?? const <CategoryDto>[]) c.id: c,
@@ -431,7 +541,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
               ),
               onSubmitted: (_) => _send(),
             ),
-            if (_mode == _Mode.record) ...[
+            ...[
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -458,31 +568,38 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    key: const Key('assistant-camera'),
-                    tooltip: settings.say('ደረሰኝ ፎቶ አንሳ', 'Photograph a receipt'),
-                    onPressed: busy || _phase == _Phase.recording
-                        ? null
-                        : () => _pickReceipt(ReceiptSource.camera),
-                    icon: const Icon(Icons.photo_camera_outlined),
-                  ),
-                  IconButton.filledTonal(
-                    key: const Key('assistant-gallery'),
-                    tooltip: settings.say('የደረሰኝ ፎቶ ምረጥ', 'Choose a receipt photo'),
-                    onPressed: busy || _phase == _Phase.recording
-                        ? null
-                        : () => _pickReceipt(ReceiptSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined),
-                  ),
+                  if (_mode == _Mode.record) ...[
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      key: const Key('assistant-camera'),
+                      tooltip: settings.say('ደረሰኝ ፎቶ አንሳ', 'Photograph a receipt'),
+                      onPressed: busy || _phase == _Phase.recording
+                          ? null
+                          : () => _pickReceipt(ReceiptSource.camera),
+                      icon: const Icon(Icons.photo_camera_outlined),
+                    ),
+                    IconButton.filledTonal(
+                      key: const Key('assistant-gallery'),
+                      tooltip: settings.say('የደረሰኝ ፎቶ ምረጥ', 'Choose a receipt photo'),
+                      onPressed: busy || _phase == _Phase.recording
+                          ? null
+                          : () => _pickReceipt(ReceiptSource.gallery),
+                      icon: const Icon(Icons.photo_library_outlined),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 6),
               Text(
-                settings.say(
-                  'ድምፅና ፎቶዎች ለማንበብ ብቻ ይላካሉ፤ አይቀመጡም።',
-                  'Voice notes and photos are sent only to be read, and are not kept.',
-                ),
+                _mode == _Mode.ask
+                    ? settings.say(
+                        'ድምፅዎ ጥያቄውን ለመረዳት ብቻ ይላካል፤ አይቀመጥም።',
+                        'Your voice is sent only to understand the question, and is not kept.',
+                      )
+                    : settings.say(
+                        'ድምፅና ፎቶዎች ለማንበብ ብቻ ይላካሉ፤ አይቀመጡም።',
+                        'Voice notes and photos are sent only to be read, and are not kept.',
+                      ),
                 style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
@@ -510,6 +627,15 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
             ],
             if (_answer != null) ...[
               const SizedBox(height: 16),
+              if (_heard != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '“${_heard!}”',
+                    key: const Key('assistant-heard'),
+                    style: theme.textTheme.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
+                  ),
+                ),
               Card(
                 margin: EdgeInsets.zero,
                 color: scheme.secondaryContainer,
@@ -551,7 +677,24 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                   onSelected: busy ? null : (v) => setState(() => _selected[i] = v),
                   onTap: busy ? null : () => _editDraft(i),
                 ),
-              if (_drafts.isNotEmpty) ...[
+              for (var i = 0; i < _fixed.length; i++)
+                _FixedDraftCard(
+                  key: Key('fixed-draft-$i'),
+                  draft: _fixed[i],
+                  category: categories[_fixed[i].categoryId],
+                  settings: settings,
+                  selected: _fixedSelected[i],
+                  onSelected: busy ? null : (v) => setState(() => _fixedSelected[i] = v),
+                ),
+              for (var i = 0; i < _payments.length; i++)
+                _PaymentDraftCard(
+                  key: Key('payment-draft-$i'),
+                  draft: _payments[i],
+                  settings: settings,
+                  selected: _paymentSelected[i],
+                  onSelected: busy ? null : (v) => setState(() => _paymentSelected[i] = v),
+                ),
+              if (hasDrafts) ...[
                 const SizedBox(height: 12),
                 FilledButton(
                   key: const Key('assistant-save'),
@@ -562,9 +705,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                           dimension: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text(
-                          settings.say('$selectedCount ወጪዎችን መዝግብ', 'Save $selectedCount expenses'),
-                        ),
+                      : Text(settings.say('$selectedCount አስቀምጥ', 'Save $selectedCount')),
                 ),
               ],
             ],
@@ -669,6 +810,154 @@ class _DraftCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A shared row: tick box, leading icon, two lines of text, trailing amount.
+class _ChoiceCard extends StatelessWidget {
+  const _ChoiceCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.details,
+    required this.amount,
+    required this.selected,
+    required this.onSelected,
+    this.warnings = const [],
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String details;
+  final String amount;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
+  final List<String> warnings;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: const EdgeInsets.only(top: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onSelected == null ? null : () => onSelected!(!selected),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
+          child: Row(
+            children: [
+              Checkbox(
+                value: selected,
+                onChanged: onSelected == null ? null : (v) => onSelected!(v ?? false),
+              ),
+              Icon(icon, color: iconColor, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(details, style: theme.textTheme.bodySmall),
+                    for (final w in warnings)
+                      Text(
+                        '⚠ $w',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.tertiary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Text(
+                amount,
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Every month from ጳጉሜን 2018 · due day 5" — a new fixed monthly expense.
+class _FixedDraftCard extends StatelessWidget {
+  const _FixedDraftCard({
+    super.key,
+    required this.draft,
+    required this.category,
+    required this.settings,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final FixedDraftDto draft;
+  final CategoryDto? category;
+  final AppSettings settings;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final start = draft.startPeriod.label(settings.language);
+    return _ChoiceCard(
+      icon: Icons.event_repeat_rounded,
+      iconColor: categoryColor(category?.color),
+      title: settings.say('በየወሩ · ${draft.title}', 'Every month · ${draft.title}'),
+      details: settings.say(
+        'ከ$start ጀምሮ · ቀን ${draft.dueDay}',
+        'From $start · due day ${draft.dueDay}',
+      ),
+      amount: draft.amount.format(),
+      selected: selected,
+      onSelected: onSelected,
+      warnings: [
+        for (final w in draft.warnings)
+          switch (w) {
+            'due_day_unclear' => settings.say('ቀኑን ያረጋግጡ', 'Check the due day'),
+            'category_guessed' => settings.say('ምድቡን ያረጋግጡ', 'Check the category'),
+            _ => w,
+          },
+      ],
+    );
+  }
+}
+
+/// "Mark Rent paid · ነሐሴ 2018" — a payment on an existing fixed monthly expense.
+class _PaymentDraftCard extends StatelessWidget {
+  const _PaymentDraftCard({
+    super.key,
+    required this.draft,
+    required this.settings,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final PaymentDraftDto draft;
+  final AppSettings settings;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ChoiceCard(
+      icon: Icons.check_circle_outline_rounded,
+      iconColor: Theme.of(context).colorScheme.primary,
+      title: settings.say('${draft.title} ተከፍሏል', 'Mark ${draft.title} paid'),
+      details: draft.period.label(settings.language),
+      amount: draft.amount.format(),
+      selected: selected,
+      onSelected: onSelected,
+      warnings: [
+        for (final w in draft.warnings)
+          switch (w) {
+            'already_paid' => settings.say('ይህ ወር ቀድሞ ተከፍሏል', 'This month is already paid'),
+            'date_unclear' => settings.say('ቀኑን ያረጋግጡ', 'Check the date'),
+            _ => w,
+          },
+      ],
     );
   }
 }

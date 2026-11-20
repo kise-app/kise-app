@@ -33,12 +33,12 @@ class FakeExpensesApi implements ExpensesApi {
   ExpensePageDto Function(int offset, int limit)? pager;
 
   static ExpensePageDto emptyPage() => ExpensePageDto.fromJson({
-        'items': <Object?>[],
-        'total': 0,
-        'limit': 50,
-        'offset': 0,
-        'total_amount': {'amount_minor': 0, 'currency': 'ETB'},
-      });
+    'items': <Object?>[],
+    'total': 0,
+    'limit': 50,
+    'offset': 0,
+    'total_amount': {'amount_minor': 0, 'currency': 'ETB'},
+  });
 
   void setPage(ExpensePageDto page) => _page = page;
 
@@ -172,8 +172,14 @@ class FakeMonthlySummaryApi implements MonthlySummaryApi {
       categories: [
         spend('c-rent', 'Rent', 'ቤት ኪራይ', '#6D4C41', 'home', committedMinor: 800000),
         spend('c-food', 'Food', 'ምግብ', '#E53935', 'restaurant', dynamicMinor: dynamicMinor),
-        spend('c-net', 'Airtime & Internet', 'ካርድና ኢንተርኔት', '#00897B', 'wifi',
-            committedMinor: 20000),
+        spend(
+          'c-net',
+          'Airtime & Internet',
+          'ካርድና ኢንተርኔት',
+          '#00897B',
+          'wifi',
+          committedMinor: 20000,
+        ),
       ],
     );
   }
@@ -189,19 +195,18 @@ CategorySpendDto spend(
   int committedMinor = 0,
   int expenseCount = 1,
   int? budgetMinor,
-}) =>
-    CategorySpendDto.fromJson({
-      'budget': budgetMinor == null ? null : _m(budgetMinor),
-      'category_id': id,
-      'name': name,
-      'name_am': nameAm,
-      'color': color,
-      'icon': icon,
-      'total': _m(dynamicMinor + committedMinor),
-      'dynamic': _m(dynamicMinor),
-      'committed': _m(committedMinor),
-      'expense_count': expenseCount,
-    });
+}) => CategorySpendDto.fromJson({
+  'budget': budgetMinor == null ? null : _m(budgetMinor),
+  'category_id': id,
+  'name': name,
+  'name_am': nameAm,
+  'color': color,
+  'icon': icon,
+  'total': _m(dynamicMinor + committedMinor),
+  'dynamic': _m(dynamicMinor),
+  'committed': _m(committedMinor),
+  'expense_count': expenseCount,
+});
 
 MonthlySummaryDto summaryOf({
   required List<int> daily,
@@ -249,19 +254,18 @@ class FakeItemUsageReportsApi implements ItemUsageReportsApi {
     required int year,
     required int month,
     String calendar = 'ethiopian',
-  }) async =>
-      ItemUsageReportDto.fromJson({
-        'period': {'calendar': calendar, 'label_am': '', 'label_en': ''},
-        'currency': 'ETB',
-        'lines': <Object?>[],
-      });
+  }) async => ItemUsageReportDto.fromJson({
+    'period': {'calendar': calendar, 'label_am': '', 'label_en': ''},
+    'currency': 'ETB',
+    'lines': <Object?>[],
+  });
 }
 
 /// An in-memory Fixed Monthly Expenses backend: commitments are owed in every month from their
 /// start unless paused, and settling marks them paid for that month.
 class FakeFixedExpensesApi implements FixedExpensesApi {
   FakeFixedExpensesApi([List<FixedExpenseDto> commitments = const []])
-      : commitments = [...commitments];
+    : commitments = [...commitments];
 
   final List<FixedExpenseDto> commitments;
 
@@ -294,7 +298,9 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
         },
     ];
     final committed = rows.fold<int>(
-        0, (sum, r) => sum + ((r['amount'] as Map)['amount_minor'] as int));
+      0,
+      (sum, r) => sum + ((r['amount'] as Map)['amount_minor'] as int),
+    );
     final paid = rows
         .where((r) => r['is_settled'] == true)
         .fold<int>(0, (sum, r) => sum + ((r['amount'] as Map)['amount_minor'] as int));
@@ -325,8 +331,14 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
       'due_day': dueDay,
       'note': note,
     };
-    final created = fixedExpense('fx-${commitments.length + 1}', title, amountMinor,
-        categoryId: categoryId, dueDay: dueDay, start: startPeriod);
+    final created = fixedExpense(
+      'fx-${commitments.length + 1}',
+      title,
+      amountMinor,
+      categoryId: categoryId,
+      dueDay: dueDay,
+      start: startPeriod,
+    );
     commitments.add(created);
     return created;
   }
@@ -346,8 +358,13 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
     lastUpdate = {'end_period': endPeriod, 'clear_end_period': clearEndPeriod};
     final index = commitments.indexWhere((c) => c.id == id);
     final old = commitments[index];
-    commitments[index] = fixedExpense(id, title ?? old.title, amountMinor ?? old.amount.minorUnits,
-        categoryId: categoryId ?? old.categoryId, dueDay: dueDay ?? old.dueDay);
+    commitments[index] = fixedExpense(
+      id,
+      title ?? old.title,
+      amountMinor ?? old.amount.minorUnits,
+      categoryId: categoryId ?? old.categoryId,
+      dueDay: dueDay ?? old.dueDay,
+    );
     return commitments[index];
   }
 
@@ -360,8 +377,14 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
   FixedExpenseDto _setPaused(String id, bool paused) {
     final index = commitments.indexWhere((c) => c.id == id);
     final old = commitments[index];
-    commitments[index] = fixedExpense(id, old.title, old.amount.minorUnits,
-        categoryId: old.categoryId, dueDay: old.dueDay, paused: paused);
+    commitments[index] = fixedExpense(
+      id,
+      old.title,
+      old.amount.minorUnits,
+      categoryId: old.categoryId,
+      dueDay: old.dueDay,
+      paused: paused,
+    );
     return commitments[index];
   }
 
@@ -400,12 +423,12 @@ class FakeFixedExpensesApi implements FixedExpensesApi {
 }
 
 Map<String, Object?> _date(String gregorian, String ethiopian) => {
-      'gregorian': gregorian,
-      'ethiopian': ethiopian,
-      'ethiopian_month_name_am': 'ነሐሴ',
-      'ethiopian_month_name_en': 'Nehase',
-      'entered_in': 'gregorian',
-    };
+  'gregorian': gregorian,
+  'ethiopian': ethiopian,
+  'ethiopian_month_name_am': 'ነሐሴ',
+  'ethiopian_month_name_en': 'Nehase',
+  'entered_in': 'gregorian',
+};
 
 FixedExpenseDto fixedExpense(
   String id,
@@ -436,7 +459,7 @@ FixedExpenseDto fixedExpense(
 
 class FakeCategoriesApi implements CategoriesApi {
   FakeCategoriesApi([List<CategoryDto> items = const [], this.inUse = const {}])
-      : items = [...items];
+    : items = [...items];
 
   final List<CategoryDto> items;
 
@@ -456,20 +479,35 @@ class FakeCategoriesApi implements CategoriesApi {
     String? icon,
   }) async {
     calls.add('create:$name:${nameAm ?? ''}:${color ?? ''}:${icon ?? ''}');
-    final created = category('cat-new-${items.length}', name,
-        nameAm: nameAm, color: color ?? '#607D8B', icon: icon);
+    final created = category(
+      'cat-new-${items.length}',
+      name,
+      nameAm: nameAm,
+      color: color ?? '#607D8B',
+      icon: icon,
+    );
     items.add(created);
     return created;
   }
 
   @override
-  Future<CategoryDto> update(String id,
-      {String? name, String? nameAm, String? color, String? icon}) async {
+  Future<CategoryDto> update(
+    String id, {
+    String? name,
+    String? nameAm,
+    String? color,
+    String? icon,
+  }) async {
     calls.add('update:$id:${name ?? '-'}:${nameAm ?? '-'}:${color ?? '-'}:${icon ?? '-'}');
     final i = items.indexWhere((c) => c.id == id);
     final old = items[i];
-    items[i] = category(id, name ?? old.name,
-        nameAm: nameAm ?? old.nameAm, color: color ?? old.color, icon: icon ?? old.icon);
+    items[i] = category(
+      id,
+      name ?? old.name,
+      nameAm: nameAm ?? old.nameAm,
+      color: color ?? old.color,
+      icon: icon ?? old.icon,
+    );
     return items[i];
   }
 
@@ -479,8 +517,14 @@ class FakeCategoriesApi implements CategoriesApi {
     final i = items.indexWhere((c) => c.id == id);
     if (inUse.contains(id)) {
       final old = items[i];
-      items[i] = category(id, old.name,
-          nameAm: old.nameAm, color: old.color, icon: old.icon, archived: true);
+      items[i] = category(
+        id,
+        old.name,
+        nameAm: old.nameAm,
+        color: old.color,
+        icon: old.icon,
+        archived: true,
+      );
       return items[i];
     }
     items.removeAt(i);
@@ -534,106 +578,101 @@ CategoryDto category(
   String color = '#607D8B',
   String? icon,
   bool archived = false,
-}) =>
-    CategoryDto.fromJson({
-      'id': id,
-      'name': name,
-      'name_am': nameAm,
-      'color': color,
-      'icon': icon,
-      'is_archived': archived,
-      'is_default': false,
-    });
+}) => CategoryDto.fromJson({
+  'id': id,
+  'name': name,
+  'name_am': nameAm,
+  'color': color,
+  'icon': icon,
+  'is_archived': archived,
+  'is_default': false,
+});
 
-UnitDto unit(String id, String code, String name, {String? nameAm}) => UnitDto.fromJson({
-      'id': id,
-      'code': code,
-      'name': name,
-      'name_am': nameAm,
-      'is_system': true,
-    });
+UnitDto unit(String id, String code, String name, {String? nameAm}) =>
+    UnitDto.fromJson({'id': id, 'code': code, 'name': name, 'name_am': nameAm, 'is_system': true});
 
 ExpenseDto _expense({
   required String categoryId,
   required int amountMinor,
   required String date,
   String? categoryName,
-}) =>
-    ExpenseDto.fromJson({
-      'id': 'exp-${DateTime.now().microsecondsSinceEpoch}',
-      'category_id': categoryId,
-      'amount': {'amount_minor': amountMinor, 'currency': 'ETB'},
-      'spent_on': {
-        'gregorian': date,
-        'ethiopian': '2018-12-29',
-        'ethiopian_month_name_am': 'ነሐሴ',
-        'ethiopian_month_name_en': 'Nehase',
-        'entered_in': 'gregorian',
-      },
-      'note': null,
-      'payment_method': 'cash',
-      'category_name': categoryName,
-      'category_name_am': null,
-      'item': null,
-    });
+}) => ExpenseDto.fromJson({
+  'id': 'exp-${DateTime.now().microsecondsSinceEpoch}',
+  'category_id': categoryId,
+  'amount': {'amount_minor': amountMinor, 'currency': 'ETB'},
+  'spent_on': {
+    'gregorian': date,
+    'ethiopian': '2018-12-29',
+    'ethiopian_month_name_am': 'ነሐሴ',
+    'ethiopian_month_name_en': 'Nehase',
+    'entered_in': 'gregorian',
+  },
+  'note': null,
+  'payment_method': 'cash',
+  'category_name': categoryName,
+  'category_name_am': null,
+  'item': null,
+});
 
 ExpenseDto expenseRow({
   required String id,
   required int amountMinor,
   String? categoryName,
   Map<String, Object?>? item,
-}) =>
-    ExpenseDto.fromJson({
-      'id': id,
-      'category_id': 'cat-1',
-      'amount': {'amount_minor': amountMinor, 'currency': 'ETB'},
-      'spent_on': {
-        'gregorian': '2026-09-04',
-        'ethiopian': '2018-12-29',
-        'ethiopian_month_name_am': 'ነሐሴ',
-        'ethiopian_month_name_en': 'Nehase',
-        'entered_in': 'gregorian',
-      },
-      'note': null,
-      'payment_method': 'cash',
-      'category_name': categoryName,
-      'category_name_am': null,
-      'item': item,
-    });
+}) => ExpenseDto.fromJson({
+  'id': id,
+  'category_id': 'cat-1',
+  'amount': {'amount_minor': amountMinor, 'currency': 'ETB'},
+  'spent_on': {
+    'gregorian': '2026-09-04',
+    'ethiopian': '2018-12-29',
+    'ethiopian_month_name_am': 'ነሐሴ',
+    'ethiopian_month_name_en': 'Nehase',
+    'entered_in': 'gregorian',
+  },
+  'note': null,
+  'payment_method': 'cash',
+  'category_name': categoryName,
+  'category_name_am': null,
+  'item': item,
+});
 
 ExpensePageDto pageOf(List<ExpenseDto> items, {int? totalAmountMinor}) => ExpensePageDto.fromJson({
-      'items': items.map((e) => {
-            'id': e.id,
-            'category_id': e.categoryId,
-            'amount': {'amount_minor': e.amount.minorUnits, 'currency': e.amount.currency},
-            'spent_on': e.spentOn.raw,
-            'note': e.note,
-            'payment_method': e.paymentMethod,
-            'category_name': e.categoryName,
-            'category_name_am': e.categoryNameAm,
-            'item': e.item == null
-                ? null
-                : {
-                    'item_id': e.item!.itemId,
-                    'item_name': e.item!.itemName,
-                    'item_name_am': e.item!.itemNameAm,
-                    'quantity': e.item!.quantity,
-                    'quantity_milli': e.item!.quantityMilli,
-                    'unit_id': e.item!.unitId,
-                    'unit_code': e.item!.unitCode,
-                    'unit_name': e.item!.unitName,
-                    'unit_name_am': e.item!.unitNameAm,
-                  },
-          }).toList(),
-      'total': items.length,
-      'limit': 50,
-      'offset': 0,
-      'total_amount': {
-        'amount_minor': totalAmountMinor ??
-            items.fold<int>(0, (sum, e) => sum + e.amount.minorUnits),
-        'currency': 'ETB',
-      },
-    });
+  'items': items
+      .map(
+        (e) => {
+          'id': e.id,
+          'category_id': e.categoryId,
+          'amount': {'amount_minor': e.amount.minorUnits, 'currency': e.amount.currency},
+          'spent_on': e.spentOn.raw,
+          'note': e.note,
+          'payment_method': e.paymentMethod,
+          'category_name': e.categoryName,
+          'category_name_am': e.categoryNameAm,
+          'item': e.item == null
+              ? null
+              : {
+                  'item_id': e.item!.itemId,
+                  'item_name': e.item!.itemName,
+                  'item_name_am': e.item!.itemNameAm,
+                  'quantity': e.item!.quantity,
+                  'quantity_milli': e.item!.quantityMilli,
+                  'unit_id': e.item!.unitId,
+                  'unit_code': e.item!.unitCode,
+                  'unit_name': e.item!.unitName,
+                  'unit_name_am': e.item!.unitNameAm,
+                },
+        },
+      )
+      .toList(),
+  'total': items.length,
+  'limit': 50,
+  'offset': 0,
+  'total_amount': {
+    'amount_minor': totalAmountMinor ?? items.fold<int>(0, (sum, e) => sum + e.amount.minorUnits),
+    'currency': 'ETB',
+  },
+});
 
 /// In-memory budgets: the overall one under the key null, categories by id.
 class FakeBudgetsApi implements BudgetsApi {
@@ -643,10 +682,10 @@ class FakeBudgetsApi implements BudgetsApi {
   final List<String> calls = [];
 
   BudgetDto _dto(String? categoryId) => BudgetDto.fromJson({
-        'id': 'b-${categoryId ?? 'overall'}',
-        'category_id': categoryId,
-        'amount': _m(amounts[categoryId]!),
-      });
+    'id': 'b-${categoryId ?? 'overall'}',
+    'category_id': categoryId,
+    'amount': _m(amounts[categoryId]!),
+  });
 
   @override
   Future<List<BudgetDto>> list() async => [for (final key in amounts.keys) _dto(key)];
@@ -680,7 +719,11 @@ class FakeBudgetsApi implements BudgetsApi {
 
 /// Records profile pushes and password changes; never touches the token store.
 class FakeAuthApi implements AuthApi {
-  FakeAuthApi({this.passwordError, this.signInProviders = const SignInProvidersDto(), this.socialError});
+  FakeAuthApi({
+    this.passwordError,
+    this.signInProviders = const SignInProvidersDto(),
+    this.socialError,
+  });
 
   final ApiException? passwordError;
   final SignInProvidersDto signInProviders;
@@ -700,7 +743,10 @@ class FakeAuthApi implements AuthApi {
   }
 
   @override
-  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
     if (passwordError != null) throw passwordError!;
     passwordChanges.add({'current': currentPassword, 'new': newPassword});
   }
@@ -750,8 +796,7 @@ class FakeAuthApi implements AuthApi {
     String? calendar,
     String? language,
     String? currency,
-  }) async =>
-      throw UnimplementedError();
+  }) async => throw UnimplementedError();
 
   @override
   Future<void> signOut() async {}
@@ -762,16 +807,15 @@ ProfileDto profile({
   String calendar = 'ethiopian',
   String language = 'am',
   String currency = 'ETB',
-}) =>
-    ProfileDto.fromJson({
-      'id': 'owner-1',
-      'email': 'test@example.com',
-      'display_name': displayName,
-      'calendar': calendar,
-      'language': language,
-      'currency': currency,
-      'registered_at': '2026-09-01T00:00:00+00:00',
-    });
+}) => ProfileDto.fromJson({
+  'id': 'owner-1',
+  'email': 'test@example.com',
+  'display_name': displayName,
+  'calendar': calendar,
+  'language': language,
+  'currency': currency,
+  'registered_at': '2026-09-01T00:00:00+00:00',
+});
 
 /// A scripted assistant: answers with whatever the test set, and records what it was sent.
 class FakeAssistantApi implements AssistantApi {
@@ -799,17 +843,23 @@ class FakeAssistantApi implements AssistantApi {
   }
 
   @override
-  Future<DraftReplyDto> readVoice(List<int> bytes,
-      {required String contentType, required String today, String filename = 'voice.m4a'}) async {
+  Future<DraftReplyDto> readVoice(
+    List<int> bytes, {
+    required String contentType,
+    required String today,
+    String filename = 'voice.m4a',
+  }) async {
     calls.add({'kind': 'voice', 'bytes': bytes, 'type': contentType, 'today': today});
     return _reply();
   }
 
   @override
-  Future<DraftReplyDto> readReceipt(List<int> bytes,
-      {required String contentType,
-      required String today,
-      String filename = 'receipt.jpg'}) async {
+  Future<DraftReplyDto> readReceipt(
+    List<int> bytes, {
+    required String contentType,
+    required String today,
+    String filename = 'receipt.jpg',
+  }) async {
     calls.add({'kind': 'receipt', 'bytes': bytes, 'type': contentType, 'today': today});
     return _reply();
   }
@@ -819,6 +869,21 @@ class FakeAssistantApi implements AssistantApi {
     calls.add({'kind': 'ask', 'question': question, 'today': today});
     if (error != null) throw error!;
     return answer;
+  }
+
+  /// What a spoken question was heard as.
+  String? heard;
+
+  @override
+  Future<AnswerDto> askVoice(
+    List<int> bytes, {
+    required String contentType,
+    required String today,
+    String filename = 'question.m4a',
+  }) async {
+    calls.add({'kind': 'ask-voice', 'bytes': bytes, 'type': contentType, 'today': today});
+    if (error != null) throw error!;
+    return AnswerDto(answer: answer, transcript: heard);
   }
 }
 
@@ -833,21 +898,65 @@ DraftExpenseDto draftOf({
   String? note,
   Map<String, Object?>? item,
   List<String> warnings = const [],
-}) =>
-    DraftExpenseDto.fromJson({
-      'category_id': categoryId,
-      'category_name': categoryName,
-      'category_name_am': null,
-      'amount': _m(amountMinor),
-      'spent_on': _date(gregorian, ethiopian),
-      'payment_method': paymentMethod,
-      'note': note,
-      'item': item,
-      'warnings': warnings,
-    });
+}) => DraftExpenseDto.fromJson({
+  'category_id': categoryId,
+  'category_name': categoryName,
+  'category_name_am': null,
+  'amount': _m(amountMinor),
+  'spent_on': _date(gregorian, ethiopian),
+  'payment_method': paymentMethod,
+  'note': note,
+  'item': item,
+  'warnings': warnings,
+});
 
-DraftReplyDto replyOf(List<DraftExpenseDto> drafts, {String message = '', String? transcript}) =>
-    DraftReplyDto(message: message, transcript: transcript, merchant: null, drafts: drafts);
+DraftReplyDto replyOf(
+  List<DraftExpenseDto> drafts, {
+  String message = '',
+  String? transcript,
+  List<FixedDraftDto> fixed = const [],
+  List<PaymentDraftDto> payments = const [],
+}) => DraftReplyDto(
+  message: message,
+  transcript: transcript,
+  merchant: null,
+  drafts: drafts,
+  fixedDrafts: fixed,
+  paymentDrafts: payments,
+);
+
+FixedDraftDto fixedDraftOf({
+  String title = 'Rent',
+  String categoryId = 'c1',
+  int amountMinor = 800000,
+  int dueDay = 5,
+  Map<String, Object?> start = const {'calendar': 'ethiopian', 'year': 2018, 'month': 13},
+  List<String> warnings = const [],
+}) => FixedDraftDto.fromJson({
+  'title': title,
+  'category_id': categoryId,
+  'category_name': 'Taxi',
+  'category_name_am': null,
+  'amount': _m(amountMinor),
+  'due_day': dueDay,
+  'start_period': start,
+  'note': null,
+  'warnings': warnings,
+});
+
+PaymentDraftDto paymentDraftOf({
+  String id = 'fx-1',
+  String title = 'Rent',
+  int amountMinor = 800000,
+  List<String> warnings = const [],
+}) => PaymentDraftDto.fromJson({
+  'fixed_expense_id': id,
+  'title': title,
+  'period': {'calendar': 'ethiopian', 'year': 2018, 'month': 12},
+  'amount': _m(amountMinor),
+  'paid_on': _date('2026-09-04', '2018-12-29'),
+  'warnings': warnings,
+});
 
 /// Provider overrides that replace the network-backed data sources with fakes, and force the
 /// session to signed-in so gated screens render.
@@ -861,31 +970,32 @@ List<Override> fakeApiOverrides({
   FakeBudgetsApi? budgets,
   FakeAuthApi? auth,
   FakeAssistantApi? assistant,
-}) =>
-    [
-      assistantApiProvider.overrideWithValue(assistant ?? FakeAssistantApi(enabled: false)),
-      budgetsApiProvider.overrideWithValue(budgets ?? FakeBudgetsApi()),
-      authApiProvider.overrideWithValue(auth ?? FakeAuthApi()),
-      expensesApiProvider.overrideWithValue(expenses ?? FakeExpensesApi()),
-      monthlySummaryApiProvider.overrideWithValue(summary ?? FakeMonthlySummaryApi()),
-      fixedExpensesApiProvider.overrideWithValue(fixedExpenses ?? FakeFixedExpensesApi()),
-      itemUsageReportsApiProvider.overrideWithValue(FakeItemUsageReportsApi()),
-      categoriesApiProvider.overrideWithValue(categories ?? FakeCategoriesApi()),
-      unitsApiProvider.overrideWithValue(units ?? FakeUnitsApi()),
-      itemsApiProvider.overrideWithValue(items ?? FakeItemsApi()),
-      sessionProvider.overrideWith(_SignedInSession.new),
-    ];
+}) => [
+  assistantApiProvider.overrideWithValue(assistant ?? FakeAssistantApi(enabled: false)),
+  budgetsApiProvider.overrideWithValue(budgets ?? FakeBudgetsApi()),
+  authApiProvider.overrideWithValue(auth ?? FakeAuthApi()),
+  expensesApiProvider.overrideWithValue(expenses ?? FakeExpensesApi()),
+  monthlySummaryApiProvider.overrideWithValue(summary ?? FakeMonthlySummaryApi()),
+  fixedExpensesApiProvider.overrideWithValue(fixedExpenses ?? FakeFixedExpensesApi()),
+  itemUsageReportsApiProvider.overrideWithValue(FakeItemUsageReportsApi()),
+  categoriesApiProvider.overrideWithValue(categories ?? FakeCategoriesApi()),
+  unitsApiProvider.overrideWithValue(units ?? FakeUnitsApi()),
+  itemsApiProvider.overrideWithValue(items ?? FakeItemsApi()),
+  sessionProvider.overrideWith(_SignedInSession.new),
+];
 
 /// A session that is already signed in, so the gate lets the app through in tests.
 class _SignedInSession extends SessionController {
   @override
-  Future<SessionState> build() async => SignedIn(ProfileDto.fromJson({
-        'id': 'owner-1',
-        'email': 'test@example.com',
-        'display_name': 'Test',
-        'calendar': 'ethiopian',
-        'language': 'am',
-        'currency': 'ETB',
-        'registered_at': '2026-09-01T00:00:00+00:00',
-      }));
+  Future<SessionState> build() async => SignedIn(
+    ProfileDto.fromJson({
+      'id': 'owner-1',
+      'email': 'test@example.com',
+      'display_name': 'Test',
+      'calendar': 'ethiopian',
+      'language': 'am',
+      'currency': 'ETB',
+      'registered_at': '2026-09-01T00:00:00+00:00',
+    }),
+  );
 }

@@ -3,15 +3,19 @@
 ///
 /// Nothing here records an expense. The server hands back [DraftExpenseDto]s — already checked
 /// against the owner's categories and units, with dates resolved in both calendars — and the app
-/// records the ones the person confirms through [ExpensesApi.record].
+/// records the ones the person confirms through [ExpensesApi.record]. Fixed monthly expenses come
+/// back as [FixedDraftDto]s (a new commitment) and [PaymentDraftDto]s ("I paid the rent"), which
+/// the app schedules or settles through [FixedExpensesApi].
 ///
 /// Every call sends the phone's date as `today`, because "today" and "yesterday" mean the person's
 /// day, not the server's (which runs on UTC).
 library;
 
 import '../../../shared_kernel/money.dart';
+import '../../../shared_kernel/period.dart';
 import '../api_client.dart';
 import 'expenses_api.dart';
+import 'fixed_expenses_api.dart' show periodFromJson;
 
 class AssistantStatusDto {
   const AssistantStatusDto({required this.enabled, required this.hourlyLimit});
@@ -87,12 +91,91 @@ class DraftExpenseDto {
   }
 }
 
+/// A new monthly commitment the person described: "rent 8,000 every month on the 5th".
+class FixedDraftDto {
+  const FixedDraftDto({
+    required this.title,
+    required this.categoryId,
+    required this.categoryName,
+    required this.categoryNameAm,
+    required this.amount,
+    required this.dueDay,
+    required this.startPeriod,
+    required this.note,
+    required this.warnings,
+  });
+
+  final String title;
+  final String categoryId;
+  final String categoryName;
+  final String? categoryNameAm;
+  final Money amount;
+  final int dueDay;
+  final Period startPeriod;
+  final String? note;
+  final List<String> warnings;
+
+  factory FixedDraftDto.fromJson(Map<String, Object?> json) => FixedDraftDto(
+    title: json['title'] as String,
+    categoryId: json['category_id'] as String,
+    categoryName: json['category_name'] as String,
+    categoryNameAm: json['category_name_am'] as String?,
+    amount: Money.fromJson((json['amount'] as Map).cast<String, Object?>()),
+    dueDay: (json['due_day'] as num).toInt(),
+    startPeriod: periodFromJson((json['start_period'] as Map).cast<String, Object?>()),
+    note: json['note'] as String?,
+    warnings: ((json['warnings'] as List?) ?? const []).cast<String>(),
+  );
+}
+
+/// "I paid the rent": one existing commitment, to be marked paid for [period].
+class PaymentDraftDto {
+  const PaymentDraftDto({
+    required this.fixedExpenseId,
+    required this.title,
+    required this.period,
+    required this.amount,
+    required this.paidOn,
+    required this.warnings,
+  });
+
+  final String fixedExpenseId;
+  final String title;
+
+  /// The commitment's own Period — sent back to settle.
+  final Period period;
+  final Money amount;
+  final SpendDateDto paidOn;
+
+  /// `already_paid` when this month was already marked paid.
+  final List<String> warnings;
+
+  factory PaymentDraftDto.fromJson(Map<String, Object?> json) => PaymentDraftDto(
+    fixedExpenseId: json['fixed_expense_id'] as String,
+    title: json['title'] as String,
+    period: periodFromJson((json['period'] as Map).cast<String, Object?>()),
+    amount: Money.fromJson((json['amount'] as Map).cast<String, Object?>()),
+    paidOn: SpendDateDto.fromJson((json['paid_on'] as Map).cast<String, Object?>()),
+    warnings: ((json['warnings'] as List?) ?? const []).cast<String>(),
+  );
+}
+
+/// An answer to a question; [transcript] is what was heard when it was asked out loud.
+class AnswerDto {
+  const AnswerDto({required this.answer, this.transcript});
+
+  final String answer;
+  final String? transcript;
+}
+
 class DraftReplyDto {
   const DraftReplyDto({
     required this.message,
     required this.transcript,
     required this.merchant,
     required this.drafts,
+    this.fixedDrafts = const [],
+    this.paymentDrafts = const [],
   });
 
   /// One sentence from the assistant, in the person's language.
@@ -105,13 +188,24 @@ class DraftReplyDto {
   final String? merchant;
   final List<DraftExpenseDto> drafts;
 
+  /// New monthly commitments ("rent every month").
+  final List<FixedDraftDto> fixedDrafts;
+
+  /// Existing commitments said to be paid ("I paid the rent").
+  final List<PaymentDraftDto> paymentDrafts;
+
+  bool get isEmpty => drafts.isEmpty && fixedDrafts.isEmpty && paymentDrafts.isEmpty;
+
+  static List<T> _list<T>(Object? raw, T Function(Map<String, Object?>) parse) =>
+      ((raw as List?) ?? const []).map((d) => parse((d as Map).cast<String, Object?>())).toList();
+
   factory DraftReplyDto.fromJson(Map<String, Object?> json) => DraftReplyDto(
     message: (json['message'] as String?) ?? '',
     transcript: json['transcript'] as String?,
     merchant: json['merchant'] as String?,
-    drafts: ((json['drafts'] as List?) ?? const [])
-        .map((d) => DraftExpenseDto.fromJson((d as Map).cast<String, Object?>()))
-        .toList(),
+    drafts: _list(json['drafts'], DraftExpenseDto.fromJson),
+    fixedDrafts: _list(json['fixed_drafts'], FixedDraftDto.fromJson),
+    paymentDrafts: _list(json['payment_drafts'], PaymentDraftDto.fromJson),
   );
 }
 
@@ -167,5 +261,26 @@ class AssistantApi {
   Future<String> ask(String question, {required String today}) async {
     final data = await _client.postSlow('$_base/ask', body: {'question': question, 'today': today});
     return ((data as Map)['answer'] as String?) ?? '';
+  }
+
+  /// A question asked out loud: transcribed and answered in one call.
+  Future<AnswerDto> askVoice(
+    List<int> bytes, {
+    required String contentType,
+    required String today,
+    String filename = 'question.m4a',
+  }) async {
+    final data = await _client.postMultipart(
+      '$_base/ask/voice',
+      bytes: bytes,
+      filename: filename,
+      contentType: contentType,
+      fields: {'today': today},
+    );
+    final map = (data as Map).cast<String, Object?>();
+    return AnswerDto(
+      answer: (map['answer'] as String?) ?? '',
+      transcript: map['transcript'] as String?,
+    );
   }
 }

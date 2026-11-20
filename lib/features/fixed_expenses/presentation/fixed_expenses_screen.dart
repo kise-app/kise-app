@@ -22,6 +22,7 @@ import '../../../shared/widgets/section_card.dart';
 import '../../../shared_kernel/ethiopian_date.dart';
 import '../../../shared_kernel/money.dart';
 import '../../../shared_kernel/period.dart';
+import '../../assistant/assistant_sheet.dart';
 import 'fixed_expense_form_sheet.dart';
 
 class FixedExpensesScreen extends ConsumerWidget {
@@ -80,11 +81,19 @@ class FixedExpensesScreen extends ConsumerWidget {
           _ => const Center(child: CircularProgressIndicator()),
         },
       ),
-      floatingActionButton: GradientActionButton(
-        key: const Key('fixed-add'),
-        icon: Icons.add_rounded,
-        label: settings.say('ቋሚ ወጪ ጨምር', 'Add fixed'),
-        onPressed: () => showFixedExpenseForm(context),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // "Rent 8,000 every month on the 5th" or "I paid the rent", by voice.
+          const AssistantButton(),
+          GradientActionButton(
+            key: const Key('fixed-add'),
+            icon: Icons.add_rounded,
+            label: settings.say('ቋሚ ወጪ ጨምር', 'Add fixed'),
+            onPressed: () => showFixedExpenseForm(context),
+          ),
+        ],
       ),
     );
   }
