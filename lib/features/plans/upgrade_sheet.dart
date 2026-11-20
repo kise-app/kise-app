@@ -139,15 +139,35 @@ class _HowToPay extends ConsumerWidget {
       key: const Key('upgrade-how-to-pay'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (payment.price.isNotEmpty) ...[
-          Text(
-            payment.price,
-            key: const Key('upgrade-price'),
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+        if (payment.plans.any((p) => p.price.isNotEmpty)) ...[
+          Text(settings.say('ዋጋ', 'Prices'), style: step),
+          const SizedBox(height: 8),
+          for (final plan in payment.plans)
+            if (plan.price.isNotEmpty)
+              Card(
+                key: Key('upgrade-price-${plan.plan}'),
+                margin: const EdgeInsets.only(bottom: 8),
+                color: plan.aiEnabled ? theme.colorScheme.primaryContainer : null,
+                child: ListTile(
+                  leading: Icon(
+                    plan.aiEnabled ? Icons.workspace_premium_rounded : Icons.check_circle_outline,
+                    color: plan.aiEnabled ? theme.colorScheme.primary : null,
+                  ),
+                  title: Text(
+                    plan.plan == 'pro' ? settings.say('ፕሮ', 'Pro') : settings.say('መሰረታዊ', 'Basic'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    plan.aiEnabled
+                        ? settings.say('ሁሉም፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
+                        : settings.say('ከረዳቱ በስተቀር ሁሉም', 'Everything except the assistant'),
+                  ),
+                  trailing: Text(
+                    plan.price,
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
           const SizedBox(height: 12),
         ],
         Text(settings.say('1. ከእነዚህ ወደ አንዱ ይክፈሉ', '1. Pay into one of these'), style: step),

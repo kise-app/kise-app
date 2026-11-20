@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kise/features/plans/upgrade_sheet.dart';
+import 'package:kise/platform/api/api.dart';
 import 'package:kise/platform/links.dart';
 import 'package:kise/platform/settings.dart';
 import 'package:kise/platform/theme.dart';
@@ -64,10 +65,25 @@ void main() {
     expect(find.byKey(const Key('upgrade-how-to-pay')), findsNothing);
   });
 
-  testWidgets('shows the price, the accounts and the email to quote', (tester) async {
+  testWidgets('shows each plan with its price, the accounts and the email to quote', (
+    tester,
+  ) async {
     await tester.pumpWidget(_host(FakePlansApi(payment: fakePaymentInfo())));
     await _open(tester);
-    expect(find.text('300 birr a month'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('upgrade-price-basic')),
+        matching: find.text('100 birr a month'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('upgrade-price-pro')),
+        matching: find.text('300 birr a month'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Commercial Bank of Ethiopia'), findsOneWidget);
     expect(find.text('Kise PLC\n0911234567'), findsOneWidget);
     expect(find.textContaining('test@example.com', findRichText: true), findsOneWidget);
@@ -119,6 +135,28 @@ void main() {
     await tester.tap(find.byKey(const Key('upgrade-telegram')));
     await tester.pump();
     expect(find.text('Could not open that'), findsOneWidget);
+  });
+
+  testWidgets('a plan without a price is left out', (tester) async {
+    final onlyPro = PaymentInfoDto.fromJson({
+      'ready': true,
+      'accounts': [
+        {'bank': 'telebirr', 'holder': 'Kise PLC', 'number': '0911234567'},
+      ],
+      'plans': [
+        {'plan': 'basic', 'price': '', 'ai_enabled': false},
+        {'plan': 'pro', 'price': '300 birr a month', 'ai_enabled': true},
+      ],
+      'telegram': 'kise_support',
+      'telegram_url': 'https://t.me/kise_support',
+      'reference': 'test@example.com',
+    });
+    await tester.pumpWidget(_host(FakePlansApi(payment: onlyPro)));
+    await _open(tester);
+    expect(find.byKey(const Key('upgrade-price-pro')), findsOneWidget);
+    expect(find.byKey(const Key('upgrade-price-basic')), findsNothing);
+    expect(onlyPro.priceOf('pro'), '300 birr a month');
+    expect(onlyPro.priceOf('basic'), '');
   });
 
   testWidgets("the admin's note replaces the default line", (tester) async {

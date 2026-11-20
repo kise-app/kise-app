@@ -22,11 +22,31 @@ class PaymentAccountDto {
   );
 }
 
+/// A plan someone can pay for, and its price as the admin wrote it ("300 birr a month").
+class PlanPriceDto {
+  const PlanPriceDto({required this.plan, required this.price, required this.aiEnabled});
+
+  /// `basic` or `pro`.
+  final String plan;
+
+  /// Empty when the admin has not set one.
+  final String price;
+
+  /// Includes the assistant.
+  final bool aiEnabled;
+
+  factory PlanPriceDto.fromJson(Map<String, Object?> json) => PlanPriceDto(
+    plan: json['plan'] as String,
+    price: (json['price'] as String?) ?? '',
+    aiEnabled: (json['ai_enabled'] as bool?) ?? false,
+  );
+}
+
 class PaymentInfoDto {
   const PaymentInfoDto({
     required this.ready,
     this.accounts = const [],
-    this.price = '',
+    this.plans = const [],
     this.telegram = '',
     this.telegramUrl,
     this.phone = '',
@@ -39,7 +59,13 @@ class PaymentInfoDto {
   /// only says to contact the Kise team.
   final bool ready;
   final List<PaymentAccountDto> accounts;
-  final String price;
+
+  /// Basic, then Pro, each with its price.
+  final List<PlanPriceDto> plans;
+
+  /// The price of [plan], or empty.
+  String priceOf(String plan) =>
+      plans.where((p) => p.plan == plan).map((p) => p.price).firstOrNull ?? '';
 
   /// A Telegram username, without the @.
   final String telegram;
@@ -59,7 +85,10 @@ class PaymentInfoDto {
       for (final account in (json['accounts'] as List? ?? const []))
         PaymentAccountDto.fromJson((account as Map).cast<String, Object?>()),
     ],
-    price: (json['price'] as String?) ?? '',
+    plans: [
+      for (final plan in (json['plans'] as List? ?? const []))
+        PlanPriceDto.fromJson((plan as Map).cast<String, Object?>()),
+    ],
     telegram: (json['telegram'] as String?) ?? '',
     telegramUrl: json['telegram_url'] as String?,
     phone: (json['phone'] as String?) ?? '',

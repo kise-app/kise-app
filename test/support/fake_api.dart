@@ -988,7 +988,10 @@ PaymentInfoDto fakePaymentInfo({String note = ''}) => PaymentInfoDto.fromJson({
     {'bank': 'Commercial Bank of Ethiopia', 'holder': 'Kise PLC', 'number': '1000123456789'},
     {'bank': 'telebirr', 'holder': 'Kise PLC', 'number': '0911234567'},
   ],
-  'price': '300 birr a month',
+  'plans': [
+    {'plan': 'basic', 'price': '100 birr a month', 'ai_enabled': false},
+    {'plan': 'pro', 'price': '300 birr a month', 'ai_enabled': true},
+  ],
   'telegram': 'kise_support',
   'telegram_url': 'https://t.me/kise_support',
   'phone': '+251 911 234 567',
