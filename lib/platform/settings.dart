@@ -153,7 +153,8 @@ final todayProvider = Provider<DateTime>((ref) {
 });
 
 /// The month being viewed. Starts at the month containing [todayProvider] — not `DateTime.now()` —
-/// so the navigator can never disagree with the "today" card about which month it is.
+/// so the navigator can never disagree with the "today" card about which month it is. Only the
+/// current month and earlier ones can be viewed; see [PeriodNavigator].
 final selectedPeriodProvider = StateProvider<Period>(
   (ref) => Period.fromDate(ref.watch(todayProvider), ref.watch(calendarProvider)),
 );

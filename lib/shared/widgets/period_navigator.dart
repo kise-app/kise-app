@@ -32,12 +32,13 @@ class PeriodNavigator extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final currentPeriod = Period.fromDate(today, settings.calendar);
     final isCurrent = period == currentPeriod;
+    // Only this month and the ones before it: there is nothing to show in a month not yet lived.
+    final canGoForward = period < currentPeriod;
 
     final onHero = theme.extension<KiseColors>()!.heroForeground;
     final foreground = onGradient ? onHero : scheme.onSurface;
     final secondary = onGradient ? onHero.withValues(alpha: 0.78) : scheme.onSurfaceVariant;
-    final background =
-        onGradient ? onHero.withValues(alpha: 0.16) : scheme.surfaceContainerHighest;
+    final background = onGradient ? onHero.withValues(alpha: 0.16) : scheme.surfaceContainerHighest;
     final buttonBackground = onGradient ? onHero.withValues(alpha: 0.14) : theme.cardTheme.color;
 
     return Container(
@@ -50,8 +51,7 @@ class PeriodNavigator extends ConsumerWidget {
             tooltip: settings.say('ያለፈው ወር', 'Previous month'),
             color: foreground,
             background: buttonBackground,
-            onPressed: () =>
-                ref.read(selectedPeriodProvider.notifier).state = period.previous,
+            onPressed: () => ref.read(selectedPeriodProvider.notifier).state = period.previous,
           ),
           Expanded(
             child: Column(
@@ -80,8 +80,7 @@ class PeriodNavigator extends ConsumerWidget {
               tooltip: settings.say('ወደ አሁኑ ወር', 'Back to this month'),
               color: foreground,
               background: buttonBackground,
-              onPressed: () =>
-                  ref.read(selectedPeriodProvider.notifier).state = currentPeriod,
+              onPressed: () => ref.read(selectedPeriodProvider.notifier).state = currentPeriod,
               buttonKey: Key('${keyPrefix}jump-to-today'),
             ),
           _StepButton(
@@ -89,7 +88,10 @@ class PeriodNavigator extends ConsumerWidget {
             tooltip: settings.say('የሚቀጥለው ወር', 'Next month'),
             color: foreground,
             background: buttonBackground,
-            onPressed: () => ref.read(selectedPeriodProvider.notifier).state = period.next,
+            buttonKey: Key('${keyPrefix}next-month'),
+            onPressed: canGoForward
+                ? () => ref.read(selectedPeriodProvider.notifier).state = period.next
+                : null,
           ),
         ],
       ),
@@ -111,7 +113,9 @@ class _StepButton extends StatelessWidget {
   final String tooltip;
   final Color color;
   final Color? background;
-  final VoidCallback onPressed;
+
+  /// Null greys the button out (the next month, from the current one).
+  final VoidCallback? onPressed;
   final Key? buttonKey;
 
   @override
@@ -120,8 +124,11 @@ class _StepButton extends StatelessWidget {
       key: buttonKey,
       onPressed: onPressed,
       tooltip: tooltip,
-      icon: Icon(icon, color: color),
-      style: IconButton.styleFrom(backgroundColor: background),
+      icon: Icon(icon, color: onPressed == null ? color.withValues(alpha: 0.3) : color),
+      style: IconButton.styleFrom(
+        backgroundColor: background,
+        disabledBackgroundColor: background?.withValues(alpha: (background!.a * 0.5)),
+      ),
     );
   }
 }

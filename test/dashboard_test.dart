@@ -103,7 +103,14 @@ void main() {
     });
 
     testWidgets('stepping forward rolls ነሐሴ into ጳጉሜን, then into መስከረም', (tester) async {
-      await tester.pumpWidget(_app());
+      // Today is in መስከረም 2019: start two months back and step up to it.
+      await tester.pumpWidget(_app(today: DateTime.utc(2026, 9, 20)));
+      expect(_textOf(tester, 'period-label'), 'መስከረም 2019');
+      await tester.tap(find.byTooltip('ያለፈው ወር'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('ያለፈው ወር'));
+      await tester.pump();
+      expect(_textOf(tester, 'period-label'), 'ነሐሴ 2018');
 
       await tester.tap(find.byTooltip('የሚቀጥለው ወር'));
       await tester.pump();
@@ -112,6 +119,22 @@ void main() {
       await tester.tap(find.byTooltip('የሚቀጥለው ወር'));
       await tester.pump();
       expect(_textOf(tester, 'period-label'), 'መስከረም 2019');
+    });
+
+    testWidgets('the current month is the last one: no going forward into the future', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_app());
+      expect(_textOf(tester, 'period-label'), 'ነሐሴ 2018');
+      final next = tester.widget<IconButton>(find.byKey(const Key('next-month')));
+      expect(next.onPressed, isNull, reason: 'disabled on the current month');
+      await tester.tap(find.byTooltip('የሚቀጥለው ወር'));
+      await tester.pump();
+      expect(_textOf(tester, 'period-label'), 'ነሐሴ 2018');
+
+      await tester.tap(find.byTooltip('ያለፈው ወር'));
+      await tester.pump();
+      expect(tester.widget<IconButton>(find.byKey(const Key('next-month'))).onPressed, isNotNull);
     });
 
     testWidgets('the navigator always opens on the month containing today', (tester) async {
@@ -157,16 +180,16 @@ void main() {
       expect(find.text('ከባለፈው ወር 2% በታች'), findsOneWidget);
     });
 
-    testWidgets('asks the server for the month in view, and the next one on paging',
+    testWidgets('asks the server for the month in view, and the one before on paging',
         (tester) async {
       final summary = FakeMonthlySummaryApi();
       await tester.pumpWidget(_app(summary: summary));
       await tester.pumpAndSettle();
       expect(summary.requested.last, Period(CalendarKind.ethiopian, 2018, 12));
 
-      await tester.tap(find.byTooltip('የሚቀጥለው ወር'));
+      await tester.tap(find.byTooltip('ያለፈው ወር'));
       await tester.pumpAndSettle();
-      expect(summary.requested.last, Period(CalendarKind.ethiopian, 2018, 13));
+      expect(summary.requested.last, Period(CalendarKind.ethiopian, 2018, 11));
     });
 
     testWidgets('the category card lists what the server returned, largest first',
