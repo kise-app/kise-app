@@ -15,6 +15,7 @@ export 'resources/categories_api.dart';
 export 'resources/expenses_api.dart';
 export 'resources/fixed_expenses_api.dart';
 export 'resources/items_api.dart';
+export 'resources/plans_api.dart';
 export 'resources/reports_api.dart';
 export 'resources/summary_api.dart';
 export 'resources/units_api.dart';

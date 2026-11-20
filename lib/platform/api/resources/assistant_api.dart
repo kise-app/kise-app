@@ -18,13 +18,22 @@ import 'expenses_api.dart';
 import 'fixed_expenses_api.dart' show periodFromJson;
 
 class AssistantStatusDto {
-  const AssistantStatusDto({required this.enabled, required this.hourlyLimit});
+  const AssistantStatusDto({
+    required this.enabled,
+    required this.hourlyLimit,
+    this.allowed = false,
+  });
 
+  /// The server has a model configured.
   final bool enabled;
+
+  /// This account's plan includes the assistant (Pro, or a running trial).
+  final bool allowed;
   final int hourlyLimit;
 
   factory AssistantStatusDto.fromJson(Map<String, Object?> json) => AssistantStatusDto(
     enabled: json['enabled'] as bool,
+    allowed: (json['allowed'] as bool?) ?? false,
     hourlyLimit: (json['hourly_limit'] as num).toInt(),
   );
 }

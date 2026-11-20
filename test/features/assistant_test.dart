@@ -383,5 +383,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('assistant-input')), findsOneWidget);
     });
+
+    testWidgets('on Basic it shows a lock and explains Pro instead', (tester) async {
+      await tester.pumpWidget(screen(FakeAssistantApi(allowed: false)));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      await tester.tap(find.byKey(const Key('assistant-open')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('upgrade-sheet')), findsOneWidget);
+      expect(find.byKey(const Key('assistant-input')), findsNothing);
+    });
   });
 }

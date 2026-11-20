@@ -10,6 +10,36 @@ library;
 import '../api_client.dart';
 import '../auth_token_store.dart';
 
+/// The account's plan. [effective] is what is in force now: an ended trial is `basic`.
+class PlanDto {
+  const PlanDto({
+    this.plan = 'basic',
+    this.effective = 'basic',
+    this.expiresAt,
+    this.daysLeft,
+    this.aiEnabled = false,
+  });
+
+  final String plan;
+  final String effective;
+  final String? expiresAt;
+  final int? daysLeft;
+
+  /// Voice, receipt scans and questions: Pro, or a running trial.
+  final bool aiEnabled;
+
+  bool get isTrial => effective == 'trial';
+  bool get isPro => effective == 'pro';
+
+  factory PlanDto.fromJson(Map<String, Object?> json) => PlanDto(
+    plan: (json['plan'] as String?) ?? 'basic',
+    effective: (json['effective'] as String?) ?? 'basic',
+    expiresAt: json['expires_at'] as String?,
+    daysLeft: (json['days_left'] as num?)?.toInt(),
+    aiEnabled: (json['ai_enabled'] as bool?) ?? false,
+  );
+}
+
 class ProfileDto {
   const ProfileDto({
     required this.id,
@@ -19,6 +49,7 @@ class ProfileDto {
     required this.language,
     required this.currency,
     required this.registeredAt,
+    this.plan = const PlanDto(),
   });
 
   final String id;
@@ -28,16 +59,20 @@ class ProfileDto {
   final String language;
   final String currency;
   final String registeredAt;
+  final PlanDto plan;
 
   factory ProfileDto.fromJson(Map<String, Object?> json) => ProfileDto(
-        id: json['id'] as String,
-        email: json['email'] as String,
-        displayName: json['display_name'] as String,
-        calendar: json['calendar'] as String,
-        language: json['language'] as String,
-        currency: json['currency'] as String,
-        registeredAt: json['registered_at'] as String,
-      );
+    id: json['id'] as String,
+    email: json['email'] as String,
+    displayName: json['display_name'] as String,
+    calendar: json['calendar'] as String,
+    language: json['language'] as String,
+    currency: json['currency'] as String,
+    registeredAt: json['registered_at'] as String,
+    plan: json['plan'] is Map
+        ? PlanDto.fromJson((json['plan'] as Map).cast<String, Object?>())
+        : const PlanDto(),
+  );
 }
 
 class AuthResultDto {
@@ -56,11 +91,11 @@ class AuthResultDto {
   final bool created;
 
   factory AuthResultDto.fromJson(Map<String, Object?> json) => AuthResultDto(
-        token: json['token'] as String,
-        expiresAt: json['expires_at'] as String,
-        owner: ProfileDto.fromJson((json['owner'] as Map).cast<String, Object?>()),
-        created: (json['created'] as bool?) ?? false,
-      );
+    token: json['token'] as String,
+    expiresAt: json['expires_at'] as String,
+    owner: ProfileDto.fromJson((json['owner'] as Map).cast<String, Object?>()),
+    created: (json['created'] as bool?) ?? false,
+  );
 }
 
 /// Which sign-in methods the server has set up. Email and password is always on.
@@ -72,10 +107,10 @@ class SignInProvidersDto {
   final bool facebook;
 
   factory SignInProvidersDto.fromJson(Map<String, Object?> json) => SignInProvidersDto(
-        google: (json['google'] as bool?) ?? false,
-        apple: (json['apple'] as bool?) ?? false,
-        facebook: (json['facebook'] as bool?) ?? false,
-      );
+    google: (json['google'] as bool?) ?? false,
+    apple: (json['apple'] as bool?) ?? false,
+    facebook: (json['facebook'] as bool?) ?? false,
+  );
 }
 
 class AuthApi {
@@ -92,24 +127,27 @@ class AuthApi {
     String? language,
     String? currency,
   }) async {
-    final data = await _client.post('/api/auth/register', body: {
-      'email': email,
-      'password': password,
-      'display_name': displayName,
-      if (calendar != null) 'calendar': calendar,
-      if (language != null) 'language': language,
-      if (currency != null) 'currency': currency,
-    });
+    final data = await _client.post(
+      '/api/auth/register',
+      body: {
+        'email': email,
+        'password': password,
+        'display_name': displayName,
+        if (calendar != null) 'calendar': calendar,
+        if (language != null) 'language': language,
+        if (currency != null) 'currency': currency,
+      },
+    );
     final result = AuthResultDto.fromJson((data as Map).cast<String, Object?>());
     await _tokenStore.write(result.token);
     return result;
   }
 
   Future<AuthResultDto> login({required String email, required String password}) async {
-    final data = await _client.post('/api/auth/login', body: {
-      'email': email,
-      'password': password,
-    });
+    final data = await _client.post(
+      '/api/auth/login',
+      body: {'email': email, 'password': password},
+    );
     final result = AuthResultDto.fromJson((data as Map).cast<String, Object?>());
     await _tokenStore.write(result.token);
     return result;
@@ -131,15 +169,18 @@ class AuthApi {
     String? language,
     String? currency,
   }) async {
-    final data = await _client.post('/api/auth/social', body: {
-      'provider': provider,
-      'token': token,
-      if (nonce != null) 'nonce': nonce,
-      if (displayName != null) 'display_name': displayName,
-      if (calendar != null) 'calendar': calendar,
-      if (language != null) 'language': language,
-      if (currency != null) 'currency': currency,
-    });
+    final data = await _client.post(
+      '/api/auth/social',
+      body: {
+        'provider': provider,
+        'token': token,
+        if (nonce != null) 'nonce': nonce,
+        if (displayName != null) 'display_name': displayName,
+        if (calendar != null) 'calendar': calendar,
+        if (language != null) 'language': language,
+        if (currency != null) 'currency': currency,
+      },
+    );
     final result = AuthResultDto.fromJson((data as Map).cast<String, Object?>());
     await _tokenStore.write(result.token);
     return result;
@@ -151,11 +192,14 @@ class AuthApi {
   }
 
   Future<ProfileDto> updateMe({String? displayName, String? calendar, String? language}) async {
-    final data = await _client.patch('/api/auth/me', body: {
-      if (displayName != null) 'display_name': displayName,
-      if (calendar != null) 'calendar': calendar,
-      if (language != null) 'language': language,
-    });
+    final data = await _client.patch(
+      '/api/auth/me',
+      body: {
+        if (displayName != null) 'display_name': displayName,
+        if (calendar != null) 'calendar': calendar,
+        if (language != null) 'language': language,
+      },
+    );
     return ProfileDto.fromJson((data as Map).cast<String, Object?>());
   }
 
@@ -165,10 +209,10 @@ class AuthApi {
     required String currentPassword,
     required String newPassword,
   }) async {
-    await _client.post('/api/auth/password', body: {
-      'current_password': currentPassword,
-      'new_password': newPassword,
-    });
+    await _client.post(
+      '/api/auth/password',
+      body: {'current_password': currentPassword, 'new_password': newPassword},
+    );
   }
 
   /// Forget the token. The next request goes out unauthenticated.

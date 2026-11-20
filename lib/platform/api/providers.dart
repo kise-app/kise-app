@@ -17,6 +17,7 @@ import 'resources/categories_api.dart';
 import 'resources/expenses_api.dart';
 import 'resources/fixed_expenses_api.dart';
 import 'resources/items_api.dart';
+import 'resources/plans_api.dart';
 import 'resources/reports_api.dart';
 import 'resources/summary_api.dart';
 import 'resources/units_api.dart';
@@ -90,3 +91,5 @@ final budgetsApiProvider = Provider<BudgetsApi>(
 final assistantApiProvider = Provider<AssistantApi>(
   (ref) => AssistantApi(ref.watch(apiClientProvider)),
 );
+
+final plansApiProvider = Provider<PlansApi>((ref) => PlansApi(ref.watch(apiClientProvider)));

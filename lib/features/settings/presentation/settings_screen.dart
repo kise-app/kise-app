@@ -23,6 +23,7 @@ import '../../../shared_kernel/ethiopian_date.dart';
 import '../../../shared_kernel/money.dart';
 import '../../../shared_kernel/period.dart';
 import '../../categories/presentation/categories_screen.dart';
+import '../../plans/upgrade_sheet.dart';
 import 'change_password_dialog.dart';
 
 const budgetShortcutsMajor = [5000, 10000, 15000, 25000];
@@ -57,6 +58,8 @@ class SettingsScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 _BudgetPicker(settings: settings),
                 const SizedBox(height: 24),
+                _PlanCard(settings: settings),
+                const SizedBox(height: 24),
                 _AccountSection(settings: settings),
                 const SizedBox(height: 32),
                 _SignOutButton(settings: settings),
@@ -64,9 +67,8 @@ class SettingsScreen extends ConsumerWidget {
                 Center(
                   child: Text(
                     settings.say('ኪሴ · ስሪት 0.1', 'Kise · version 0.1'),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   ),
                 ),
               ],
@@ -113,13 +115,8 @@ class _Header extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                settings.say(
-                  'ለውጦች ወዲያውኑ ተቀምጠው ይተገበራሉ።',
-                  'Changes save and apply immediately.',
-                ),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: onHero.withValues(alpha: 0.85),
-                ),
+                settings.say('ለውጦች ወዲያውኑ ተቀምጠው ይተገበራሉ።', 'Changes save and apply immediately.'),
+                style: theme.textTheme.bodyMedium?.copyWith(color: onHero.withValues(alpha: 0.85)),
               ),
             ],
           ),
@@ -141,10 +138,12 @@ class _SignOutButton extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(settings.say('ይውጡ?', 'Sign out?')),
-        content: Text(settings.say(
-          'ወጪዎችዎ ተቀምጠዋል። እንደገና ለማየት መልሰው ይግቡ።',
-          'Your expenses stay saved. Sign in again to see them.',
-        )),
+        content: Text(
+          settings.say(
+            'ወጪዎችዎ ተቀምጠዋል። እንደገና ለማየት መልሰው ይግቡ።',
+            'Your expenses stay saved. Sign in again to see them.',
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -195,16 +194,11 @@ class _SectionTitle extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
+          Text(title, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           if (hint != null)
             Text(
               hint!,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
         ],
       ),
@@ -222,8 +216,9 @@ class _ProfileCard extends ConsumerStatefulWidget {
 }
 
 class _ProfileCardState extends ConsumerState<_ProfileCard> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.settings.ownerName);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.settings.ownerName,
+  );
 
   @override
   void dispose() {
@@ -251,10 +246,7 @@ class _ProfileCardState extends ConsumerState<_ProfileCard> {
                   width: 52,
                   height: 52,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: scheme.primaryContainer, shape: BoxShape.circle),
                   child: Text(
                     initial,
                     key: const Key('profile-initial'),
@@ -300,8 +292,7 @@ class _CalendarPicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ethiopian = EthiopianDate.fromGregorian(today);
-    final gregorianLabel =
-        '${gregorianMonthNamesEn[today.month - 1]} ${today.day}, ${today.year}';
+    final gregorianLabel = '${gregorianMonthNamesEn[today.month - 1]} ${today.day}, ${today.year}';
 
     void choose(CalendarKind next) {
       if (next == settings.calendar) return;
@@ -692,15 +683,19 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
           children: [
             for (final amount in budgetShortcutsMajor)
               ChoiceChipPill(
-                label: Money.fromMajor(amount, settings.currency)
-                    .formatRounded(withCurrency: false),
-                selected: budget?.minorUnits ==
-                    Money.fromMajor(amount, settings.currency).minorUnits,
+                label: Money.fromMajor(
+                  amount,
+                  settings.currency,
+                ).formatRounded(withCurrency: false),
+                selected:
+                    budget?.minorUnits == Money.fromMajor(amount, settings.currency).minorUnits,
                 onTap: () {
                   _edited = false;
-                  _write((api) => api
-                      .setOverall(Money.fromMajor(amount, settings.currency).minorUnits)
-                      .then((_) {}));
+                  _write(
+                    (api) => api
+                        .setOverall(Money.fromMajor(amount, settings.currency).minorUnits)
+                        .then((_) {}),
+                  );
                 },
               ),
             if (budget != null)
@@ -731,7 +726,9 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
                 ? const Padding(
                     padding: EdgeInsets.all(14),
                     child: SizedBox.square(
-                        dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
                 : IconButton(
                     key: const Key('budget-save'),
@@ -762,6 +759,68 @@ class _BudgetPickerState extends ConsumerState<_BudgetPicker> {
   }
 }
 
+/// The account's plan: Trial (with days left), Basic or Pro, and what that means for the
+/// assistant. Plans are changed by the Kise team for now, so this only shows.
+class _PlanCard extends ConsumerWidget {
+  const _PlanCard({required this.settings});
+
+  final AppSettings settings;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(sessionProvider).valueOrNull;
+    if (session is! SignedIn) return const SizedBox.shrink();
+    final plan = session.profile.plan;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final days = plan.daysLeft;
+    final isPro = plan.effective == 'pro';
+    final (title, detail) = switch (plan.effective) {
+      'trial' => (
+        settings.say('የሙከራ ጊዜ', 'Trial'),
+        settings.say(
+          'ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ · ${days ?? 0} ቀን ይቀራል',
+          'Everything, including the assistant · ${days ?? 0} days left',
+        ),
+      ),
+      'pro' => (
+        settings.say('ፕሮ', 'Pro'),
+        days == null
+            ? settings.say('ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
+            : settings.say('ሁሉም አገልግሎቶች · $days ቀን ይቀራል', 'Everything · $days days left'),
+      ),
+      _ => (
+        settings.say('መሰረታዊ', 'Basic'),
+        settings.say(
+          'ከረዳቱ (ድምፅ፣ ደረሰኝ፣ ጥያቄ) በስተቀር ሁሉም',
+          'Everything except the assistant (voice, receipts, questions)',
+        ),
+      ),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(title: settings.say('እቅድ', 'Plan')),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            key: const Key('plan-card'),
+            leading: Icon(
+              plan.aiEnabled ? Icons.workspace_premium_rounded : Icons.lock_outline_rounded,
+              color: plan.aiEnabled ? scheme.primary : scheme.onSurfaceVariant,
+            ),
+            title: Text(title, key: const Key('plan-name')),
+            subtitle: Text(detail, style: theme.textTheme.bodySmall),
+            // Anyone not on Pro can see how to get it, including during a trial.
+            onTap: isPro ? null : () => showUpgradeSheet(context, settings),
+            trailing: isPro ? null : const Icon(Icons.chevron_right_rounded),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Categories, and the password: things about the account rather than the screen.
 class _AccountSection extends ConsumerWidget {
   const _AccountSection({required this.settings});
@@ -782,14 +841,16 @@ class _AccountSection extends ConsumerWidget {
                 key: const Key('open-categories'),
                 leading: const Icon(Icons.category_outlined),
                 title: Text(settings.say('ምድቦች', 'Categories')),
-                subtitle: Text(settings.say(
-                  'ጨምር፣ ስም ቀይር፣ ቀለም እና የወር ገደብ',
-                  'Add, rename, colour and monthly limits',
-                )),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const CategoriesScreen()),
+                subtitle: Text(
+                  settings.say(
+                    'ጨምር፣ ስም ቀይር፣ ቀለም እና የወር ገደብ',
+                    'Add, rename, colour and monthly limits',
+                  ),
                 ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () =>
+                    Navigator.of(context)
+                        .push(MaterialPageRoute<void>(builder: (_) => const CategoriesScreen())),
               ),
               const Divider(height: 1),
               ListTile(

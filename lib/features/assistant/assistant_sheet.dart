@@ -28,6 +28,7 @@ import '../../shared/month_data.dart';
 import '../../shared_kernel/period.dart';
 import '../expenses/presentation/expense_form_sheet.dart';
 import '../expenses/presentation/expense_providers.dart' show categoriesProvider;
+import '../plans/upgrade_sheet.dart';
 import 'capture.dart';
 
 /// Whether this server has the assistant switched on. Any failure reads as "off", so a missing
@@ -50,21 +51,29 @@ Future<int?> showAssistantSheet(BuildContext context) => showModalBottomSheet<in
 );
 
 /// The small button that opens the assistant, shown only when the server has it switched on.
+/// On a plan without it (Basic, or an ended trial) it carries a lock and explains Pro instead.
 class AssistantButton extends ConsumerWidget {
   const AssistantButton({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final enabled = ref.watch(assistantStatusProvider).valueOrNull?.enabled ?? false;
-    if (!enabled) return const SizedBox.shrink();
+    final status = ref.watch(assistantStatusProvider).valueOrNull;
+    if (status == null || !status.enabled) return const SizedBox.shrink();
     final settings = ref.watch(settingsProvider);
+    final allowed = status.allowed;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: FloatingActionButton.small(
         key: const Key('assistant-open'),
         heroTag: null,
-        tooltip: settings.say('በድምፅ ወይም በደረሰኝ መዝግብ', 'Record by voice or receipt'),
+        tooltip: allowed
+            ? settings.say('በድምፅ ወይም በደረሰኝ መዝግብ', 'Record by voice or receipt')
+            : settings.say('ረዳቱ የፕሮ አገልግሎት ነው', 'The assistant is part of Pro'),
         onPressed: () async {
+          if (!allowed) {
+            await showUpgradeSheet(context, settings);
+            return;
+          }
           final messenger = ScaffoldMessenger.maybeOf(context);
           final saved = await showAssistantSheet(context);
           if (saved != null && saved > 0) {
@@ -73,7 +82,7 @@ class AssistantButton extends ConsumerWidget {
             );
           }
         },
-        child: const Icon(Icons.auto_awesome_rounded),
+        child: Icon(allowed ? Icons.auto_awesome_rounded : Icons.lock_outline_rounded),
       ),
     );
   }
@@ -147,6 +156,10 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         'assistant_failed' => settings.say(
           'ማንበብ አልተቻለም። እባክዎ እንደገና ይሞክሩ።',
           'That could not be read. Please try again.',
+        ),
+        'upgrade_required' => settings.say(
+          'ረዳቱ የፕሮ አገልግሎት ነው። የሙከራ ጊዜዎ አብቅቷል።',
+          'The assistant is part of Pro, and your trial has ended.',
         ),
         'network_error' => settings.say('ከአገልጋዩ ጋር መገናኘት አልተቻለም።', 'Could not reach the server.'),
         _ => error.message,

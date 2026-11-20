@@ -819,9 +819,18 @@ ProfileDto profile({
 
 /// A scripted assistant: answers with whatever the test set, and records what it was sent.
 class FakeAssistantApi implements AssistantApi {
-  FakeAssistantApi({this.enabled = true, this.reply, this.answer = '', this.error});
+  FakeAssistantApi({
+    this.enabled = true,
+    this.allowed = true,
+    this.reply,
+    this.answer = '',
+    this.error,
+  });
 
   final bool enabled;
+
+  /// The account's plan includes the assistant.
+  final bool allowed;
   DraftReplyDto? reply;
   String answer;
   ApiException? error;
@@ -834,7 +843,7 @@ class FakeAssistantApi implements AssistantApi {
 
   @override
   Future<AssistantStatusDto> status() async =>
-      AssistantStatusDto(enabled: enabled, hourlyLimit: 30);
+      AssistantStatusDto(enabled: enabled, allowed: allowed, hourlyLimit: 30);
 
   @override
   Future<DraftReplyDto> readText(String text, {required String today}) async {
@@ -958,6 +967,36 @@ PaymentDraftDto paymentDraftOf({
   'warnings': warnings,
 });
 
+/// How to pay for Pro, as the portal would have set it. [ready] false is "not set up yet".
+class FakePlansApi implements PlansApi {
+  FakePlansApi({PaymentInfoDto? payment}) : _payment = payment ?? PaymentInfoDto.notReady;
+
+  final PaymentInfoDto _payment;
+  int calls = 0;
+
+  @override
+  Future<PaymentInfoDto> payment() async {
+    calls++;
+    return _payment;
+  }
+}
+
+/// A complete set of payment details: two accounts, Telegram, phone and email.
+PaymentInfoDto fakePaymentInfo({String note = ''}) => PaymentInfoDto.fromJson({
+  'ready': true,
+  'accounts': [
+    {'bank': 'Commercial Bank of Ethiopia', 'holder': 'Kise PLC', 'number': '1000123456789'},
+    {'bank': 'telebirr', 'holder': 'Kise PLC', 'number': '0911234567'},
+  ],
+  'price': '300 birr a month',
+  'telegram': 'kise_support',
+  'telegram_url': 'https://t.me/kise_support',
+  'phone': '+251 911 234 567',
+  'email': 'pay@kise.example',
+  'note': note,
+  'reference': 'test@example.com',
+});
+
 /// Provider overrides that replace the network-backed data sources with fakes, and force the
 /// session to signed-in so gated screens render.
 List<Override> fakeApiOverrides({
@@ -970,7 +1009,10 @@ List<Override> fakeApiOverrides({
   FakeBudgetsApi? budgets,
   FakeAuthApi? auth,
   FakeAssistantApi? assistant,
+  FakePlansApi? plans,
+  Map<String, Object?>? plan,
 }) => [
+  plansApiProvider.overrideWithValue(plans ?? FakePlansApi()),
   assistantApiProvider.overrideWithValue(assistant ?? FakeAssistantApi(enabled: false)),
   budgetsApiProvider.overrideWithValue(budgets ?? FakeBudgetsApi()),
   authApiProvider.overrideWithValue(auth ?? FakeAuthApi()),
@@ -981,11 +1023,15 @@ List<Override> fakeApiOverrides({
   categoriesApiProvider.overrideWithValue(categories ?? FakeCategoriesApi()),
   unitsApiProvider.overrideWithValue(units ?? FakeUnitsApi()),
   itemsApiProvider.overrideWithValue(items ?? FakeItemsApi()),
-  sessionProvider.overrideWith(_SignedInSession.new),
+  sessionProvider.overrideWith(() => _SignedInSession(plan)),
 ];
 
 /// A session that is already signed in, so the gate lets the app through in tests.
 class _SignedInSession extends SessionController {
+  _SignedInSession(this._plan);
+
+  final Map<String, Object?>? _plan;
+
   @override
   Future<SessionState> build() async => SignedIn(
     ProfileDto.fromJson({
@@ -996,6 +1042,7 @@ class _SignedInSession extends SessionController {
       'language': 'am',
       'currency': 'ETB',
       'registered_at': '2026-09-01T00:00:00+00:00',
+      'plan': ?_plan,
     }),
   );
 }
