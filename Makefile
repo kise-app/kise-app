@@ -86,7 +86,9 @@ iphone-install: ## Install a standalone release build on the iPhone, then exit (
 
 .PHONY: android-check
 android-check:
-	@flutter doctor 2>/dev/null | grep -q '\[✓\] Android toolchain' \
+	@# Only the SDK has to be there. A "license status unknown" warning from flutter doctor is
+	@# not fatal: newer sdkmanagers no longer report it, and builds work.
+	@flutter doctor -v 2>/dev/null | grep -q 'Android SDK at ' \
 		|| { echo "No Android SDK. Install Android Studio (https://developer.android.com/studio),"; \
 		     echo "open it once to install the SDK, then run: flutter doctor --android-licenses"; exit 1; }
 	@test -n "$(ANDROID)" \
