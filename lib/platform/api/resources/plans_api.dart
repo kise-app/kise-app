@@ -24,21 +24,35 @@ class PaymentAccountDto {
 
 /// A plan someone can pay for, and its price as the admin wrote it ("300 birr a month").
 class PlanPriceDto {
-  const PlanPriceDto({required this.plan, required this.price, required this.aiEnabled});
+  const PlanPriceDto({
+    required this.plan,
+    required this.price,
+    required this.aiEnabled,
+    this.name = '',
+    this.current = false,
+  });
 
-  /// `basic` or `pro`.
+  /// The plan's code: `basic`, `pro`, or one an admin added.
   final String plan;
+
+  /// Its name as an admin wrote it; empty from an older server.
+  final String name;
 
   /// Empty when the admin has not set one.
   final String price;
 
-  /// Includes the assistant.
+  /// Includes any part of the assistant.
   final bool aiEnabled;
+
+  /// The plan this account is on now.
+  final bool current;
 
   factory PlanPriceDto.fromJson(Map<String, Object?> json) => PlanPriceDto(
     plan: json['plan'] as String,
+    name: (json['name'] as String?) ?? '',
     price: (json['price'] as String?) ?? '',
     aiEnabled: (json['ai_enabled'] as bool?) ?? false,
+    current: (json['current'] as bool?) ?? false,
   );
 }
 

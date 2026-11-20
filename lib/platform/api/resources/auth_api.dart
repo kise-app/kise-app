@@ -11,33 +11,54 @@ import '../api_client.dart';
 import '../auth_token_store.dart';
 
 /// The account's plan. [effective] is what is in force now: an ended trial is `basic`.
+/// The account's plan. Admins add plans, so [effective] is not limited to `trial`, `basic` and
+/// `pro`; [name] is what to show. `trial` and `basic` are built in and keep their meaning.
 class PlanDto {
   const PlanDto({
     this.plan = 'basic',
     this.effective = 'basic',
+    this.name = '',
     this.expiresAt,
     this.daysLeft,
     this.aiEnabled = false,
+    this.receiptsPerMonth = 0,
+    this.voicePerMonth = 0,
   });
 
   final String plan;
   final String effective;
+
+  /// The plan's name as an admin wrote it; empty from an older server.
+  final String name;
   final String? expiresAt;
   final int? daysLeft;
 
-  /// Voice, receipt scans and questions: Pro, or a running trial.
+  /// Any part of the assistant: typed requests, receipt scans or voice notes.
   final bool aiEnabled;
 
-  bool get isTrial => effective == 'trial';
-  bool get isPro => effective == 'pro';
+  /// A month; null is no monthly limit.
+  final int? receiptsPerMonth;
+  final int? voicePerMonth;
 
-  factory PlanDto.fromJson(Map<String, Object?> json) => PlanDto(
-    plan: (json['plan'] as String?) ?? 'basic',
-    effective: (json['effective'] as String?) ?? 'basic',
-    expiresAt: json['expires_at'] as String?,
-    daysLeft: (json['days_left'] as num?)?.toInt(),
-    aiEnabled: (json['ai_enabled'] as bool?) ?? false,
-  );
+  bool get isTrial => effective == 'trial';
+  bool get isBasic => effective == 'basic';
+
+  factory PlanDto.fromJson(Map<String, Object?> json) {
+    final ai = (json['ai_enabled'] as bool?) ?? false;
+    // An older server sends no limits: read them from ai_enabled, as it meant then.
+    int? monthly(String key) =>
+        json.containsKey(key) ? (json[key] as num?)?.toInt() : (ai ? null : 0);
+    return PlanDto(
+      plan: (json['plan'] as String?) ?? 'basic',
+      effective: (json['effective'] as String?) ?? 'basic',
+      name: (json['name'] as String?) ?? '',
+      expiresAt: json['expires_at'] as String?,
+      daysLeft: (json['days_left'] as num?)?.toInt(),
+      aiEnabled: ai,
+      receiptsPerMonth: monthly('receipts_per_month'),
+      voicePerMonth: monthly('voice_per_month'),
+    );
+  }
 }
 
 class ProfileDto {

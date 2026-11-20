@@ -774,27 +774,37 @@ class _PlanCard extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final days = plan.daysLeft;
-    final isPro = plan.effective == 'pro';
+    // Anyone on a plan with all of the assistant sees no upgrade; everyone else can look.
+    final isTop =
+        plan.aiEnabled &&
+        !plan.isTrial &&
+        plan.receiptsPerMonth == null &&
+        plan.voicePerMonth == null;
+    String name(String am, String en) => plan.name.isNotEmpty ? plan.name : settings.say(am, en);
+    final ending = days == null ? '' : settings.say(' · $days ቀን ይቀራል', ' · $days days left');
     final (title, detail) = switch (plan.effective) {
       'trial' => (
-        settings.say('የሙከራ ጊዜ', 'Trial'),
+        name('የሙከራ ጊዜ', 'Trial'),
         settings.say(
           'ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ · ${days ?? 0} ቀን ይቀራል',
           'Everything, including the assistant · ${days ?? 0} days left',
         ),
       ),
-      'pro' => (
-        settings.say('ፕሮ', 'Pro'),
-        days == null
-            ? settings.say('ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
-            : settings.say('ሁሉም አገልግሎቶች · $days ቀን ይቀራል', 'Everything · $days days left'),
+      'basic' => (
+        name('መሰረታዊ', 'Basic'),
+        plan.aiEnabled
+            ? settings.say('ከረዳቱ የተወሰነውን ጨምሮ', 'Includes some of the assistant')
+            : settings.say(
+                'ከረዳቱ (ድምፅ፣ ደረሰኝ፣ ጥያቄ) በስተቀር ሁሉም',
+                'Everything except the assistant (voice, receipts, questions)',
+              ),
       ),
       _ => (
-        settings.say('መሰረታዊ', 'Basic'),
-        settings.say(
-          'ከረዳቱ (ድምፅ፣ ደረሰኝ፣ ጥያቄ) በስተቀር ሁሉም',
-          'Everything except the assistant (voice, receipts, questions)',
-        ),
+        name('ፕሮ', 'Pro'),
+        (plan.aiEnabled
+                ? settings.say('ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
+                : settings.say('ከረዳቱ በስተቀር ሁሉም', 'Everything except the assistant')) +
+            ending,
       ),
     };
     return Column(
@@ -812,8 +822,8 @@ class _PlanCard extends ConsumerWidget {
             title: Text(title, key: const Key('plan-name')),
             subtitle: Text(detail, style: theme.textTheme.bodySmall),
             // Anyone not on Pro can see how to get it, including during a trial.
-            onTap: isPro ? null : () => showUpgradeSheet(context, settings),
-            trailing: isPro ? null : const Icon(Icons.chevron_right_rounded),
+            onTap: isTop ? null : () => showUpgradeSheet(context, settings),
+            trailing: isTop ? null : const Icon(Icons.chevron_right_rounded),
           ),
         ),
       ],

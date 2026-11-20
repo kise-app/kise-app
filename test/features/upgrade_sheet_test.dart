@@ -159,6 +159,40 @@ void main() {
     expect(onlyPro.priceOf('basic'), '');
   });
 
+  testWidgets('plans an admin added are listed by name, and the current one is marked', (
+    tester,
+  ) async {
+    final info = PaymentInfoDto.fromJson({
+      'ready': true,
+      'accounts': [
+        {'bank': 'telebirr', 'holder': 'Kise PLC', 'number': '0911234567'},
+      ],
+      'plans': [
+        {
+          'plan': 'basic',
+          'name': 'Basic',
+          'price': '100 birr',
+          'ai_enabled': false,
+          'current': true,
+        },
+        {'plan': 'family', 'name': 'Family', 'price': '500 birr', 'ai_enabled': true},
+      ],
+      'telegram': 'kise_support',
+      'telegram_url': 'https://t.me/kise_support',
+      'reference': 'test@example.com',
+    });
+    await tester.pumpWidget(_host(FakePlansApi(payment: info)));
+    await _open(tester);
+    expect(find.text('Basic · yours now'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('upgrade-price-family')),
+        matching: find.text('Family'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets("the admin's note replaces the default line", (tester) async {
     await tester.pumpWidget(
       _host(FakePlansApi(payment: fakePaymentInfo(note: 'We switch you within a day.'))),

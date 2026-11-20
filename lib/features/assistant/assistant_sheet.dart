@@ -13,7 +13,8 @@
 ///   figures.
 ///
 /// The microphone and camera sit behind [VoiceRecorder] and [ReceiptPicker] (see `capture.dart`),
-/// so this widget is testable without plugins. Voice notes stop on their own after a minute.
+/// so this widget is testable without plugins. A voice note stops on its own at the plan's limit
+/// (the server's `max_voice_seconds`) and what was said so far is sent, as if Stop had been tapped.
 library;
 
 import 'dart:async';
@@ -145,6 +146,12 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
 
   // -- talking to the server --------------------------------------------
 
+  int get _secondsLeft => (_maxVoiceNote - _elapsed).inSeconds.clamp(0, 1 << 30);
+
+  /// The plan's limit, so the server never refuses a note the app let someone record.
+  Duration get _maxVoiceNote =>
+      ref.read(assistantStatusProvider).valueOrNull?.maxVoiceNote ?? defaultMaxVoiceNote;
+
   String _describe(Object error) {
     final settings = _settings;
     if (error is ApiException) {
@@ -160,6 +167,14 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         'upgrade_required' => settings.say(
           'ረዳቱ የፕሮ አገልግሎት ነው። የሙከራ ጊዜዎ አብቅቷል።',
           'The assistant is part of Pro, and your trial has ended.',
+        ),
+        'allowance_used_up' => settings.say(
+          'የዚህ ወር ድርሻዎ አልቋል። በሚቀጥለው ወር 1 ቀን እንደገና ይጀምራል።',
+          "You have used this month's allowance. It starts again on the 1st.",
+        ),
+        'voice_note_too_long' => settings.say(
+          'የድምፅ መልዕክቱ በጣም ረጅም ነው። አጠር አድርገው ይሞክሩ።',
+          'That voice note is too long. Please keep it shorter.',
         ),
         'network_error' => settings.say('ከአገልጋዩ ጋር መገናኘት አልተቻለም።', 'Could not reach the server.'),
         _ => error.message,
@@ -251,7 +266,8 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() => _elapsed += const Duration(seconds: 1));
-      if (_elapsed >= maxVoiceNote) _stopRecording();
+      // Time is up: send what was said, exactly as if Stop had been tapped.
+      if (_elapsed >= _maxVoiceNote) _stopRecording();
     });
   }
 
@@ -470,6 +486,8 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
+    // Watched so the plan's voice note limit is loaded before the first recording.
+    ref.watch(assistantStatusProvider);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
@@ -574,8 +592,8 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                       label: Text(
                         _phase == _Phase.recording
                             ? settings.say(
-                                'አቁም · ${_elapsed.inSeconds}s',
-                                'Stop · ${_elapsed.inSeconds}s',
+                                'አቁም · ${_secondsLeft}s ቀርቷል',
+                                'Stop · ${_secondsLeft}s left',
                               )
                             : settings.say('ተናገር', 'Speak'),
                       ),

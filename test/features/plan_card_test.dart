@@ -59,6 +59,26 @@ void main() {
     expect(find.byKey(const Key('upgrade-sheet')), findsOneWidget);
   });
 
+  testWidgets('a plan an admin added shows its own name and can still upgrade', (tester) async {
+    await tester.pumpWidget(
+      _host({
+        'plan': 'family',
+        'effective': 'family',
+        'name': 'Family',
+        'days_left': 20,
+        'ai_enabled': true,
+        'receipts_per_month': 100,
+        'voice_per_month': 40,
+      }),
+    );
+    await tester.pumpAndSettle();
+    expect(_name(tester), 'Family');
+    expect(find.textContaining('20 days left'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('plan-card')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('upgrade-sheet')), findsOneWidget, reason: 'it has limits');
+  });
+
   testWidgets('open-ended Pro', (tester) async {
     await tester.pumpWidget(_host({'plan': 'pro', 'effective': 'pro', 'ai_enabled': true}));
     await tester.pumpAndSettle();

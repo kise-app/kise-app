@@ -154,7 +154,12 @@ class _HowToPay extends ConsumerWidget {
                     color: plan.aiEnabled ? theme.colorScheme.primary : null,
                   ),
                   title: Text(
-                    plan.plan == 'pro' ? settings.say('ፕሮ', 'Pro') : settings.say('መሰረታዊ', 'Basic'),
+                    plan.current
+                        ? settings.say(
+                            '${_planName(plan, settings)} · አሁን ያለዎት',
+                            '${_planName(plan, settings)} · yours now',
+                          )
+                        : _planName(plan, settings),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(
@@ -257,4 +262,14 @@ class _HowToPay extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// A plan's name: the admin's, or for an older server that sends none, the built-in one.
+String _planName(PlanPriceDto plan, AppSettings settings) {
+  if (plan.name.isNotEmpty) return plan.name;
+  return switch (plan.plan) {
+    'pro' => settings.say('ፕሮ', 'Pro'),
+    'basic' => settings.say('መሰረታዊ', 'Basic'),
+    _ => plan.plan,
+  };
 }

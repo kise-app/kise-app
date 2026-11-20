@@ -822,12 +822,16 @@ class FakeAssistantApi implements AssistantApi {
   FakeAssistantApi({
     this.enabled = true,
     this.allowed = true,
+    this.maxVoiceSeconds = 60,
     this.reply,
     this.answer = '',
     this.error,
   });
 
   final bool enabled;
+
+  /// The plan's longest voice note.
+  final int maxVoiceSeconds;
 
   /// The account's plan includes the assistant.
   final bool allowed;
@@ -842,8 +846,12 @@ class FakeAssistantApi implements AssistantApi {
   }
 
   @override
-  Future<AssistantStatusDto> status() async =>
-      AssistantStatusDto(enabled: enabled, allowed: allowed, hourlyLimit: 30);
+  Future<AssistantStatusDto> status() async => AssistantStatusDto(
+    enabled: enabled,
+    allowed: allowed,
+    hourlyLimit: 30,
+    maxVoiceSeconds: maxVoiceSeconds,
+  );
 
   @override
   Future<DraftReplyDto> readText(String text, {required String today}) async {

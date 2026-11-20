@@ -4,8 +4,8 @@
 /// widget tests swap in fakes and the plugins stay at the edge. The real implementations:
 ///
 /// * [PluginVoiceRecorder] records AAC in an `.m4a` file in the temporary directory (small, and the
-///   format the server expects), and deletes the file once its bytes are read. A note longer than
-///   [maxVoiceNote] is stopped for the person.
+///   format the server expects), and deletes the file once its bytes are read. The sheet stops a
+///   note at the plan's limit ([AssistantStatusDto.maxVoiceNote]) and sends what was said.
 /// * [PluginReceiptPicker] takes a photo or picks one from the library, scaled to at most 2000 px
 ///   on the long side and re-compressed, which keeps a receipt legible and well under the server's
 ///   8 MB limit.
@@ -18,7 +18,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
-const maxVoiceNote = Duration(seconds: 60);
+/// Used until the server's status arrives (and by older servers that do not send one).
+const defaultMaxVoiceNote = Duration(seconds: 60);
 
 /// Bytes plus their type, ready to upload.
 class CapturedMedia {

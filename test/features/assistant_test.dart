@@ -162,7 +162,7 @@ void main() {
     await tester.pump();
     expect(find.textContaining('Stop'), findsOneWidget);
     await tester.pump(const Duration(seconds: 2));
-    expect(find.textContaining('Stop · 2s'), findsOneWidget);
+    expect(find.textContaining('Stop · 58s left'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('assistant-mic')));
     await tester.pumpAndSettle();
@@ -173,6 +173,52 @@ void main() {
     expect(assistant.calls.single['type'], 'audio/mp4');
     expect(find.text('“ቡና 30 ብር”'), findsOneWidget);
     expect(find.byKey(const Key('draft-0')), findsOneWidget);
+  });
+
+  testWidgets("when the plan's time is up, what was said is sent without tapping Stop", (
+    tester,
+  ) async {
+    final recorder = FakeRecorder(
+      audio: const CapturedMedia(bytes: [7, 7], contentType: 'audio/mp4', filename: 'v.m4a'),
+    );
+    final assistant = FakeAssistantApi(
+      maxVoiceSeconds: 5,
+      reply: replyOf([draftOf(amountMinor: 3000)], transcript: 'ታክሲ 100'),
+    );
+    await tester.pumpWidget(_host(assistant: assistant, recorder: recorder));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-mic')));
+    await tester.pump();
+    expect(find.textContaining('Stop · 5s left'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    expect(find.textContaining('Stop · 1s left'), findsOneWidget);
+    expect(assistant.calls, isEmpty);
+
+    await tester.pump(const Duration(seconds: 1)); // time is up
+    await tester.pumpAndSettle();
+    expect(recorder.calls, ['permission', 'start', 'stop']);
+    expect(assistant.calls.single['kind'], 'voice');
+    expect(assistant.calls.single['bytes'], [7, 7]);
+    expect(find.text('“ታክሲ 100”'), findsOneWidget);
+    expect(find.byKey(const Key('draft-0')), findsOneWidget);
+  });
+
+  testWidgets('a used-up allowance and a too-long note are explained', (tester) async {
+    for (final (code, text) in [
+      ('allowance_used_up', "You have used this month's allowance"),
+      ('voice_note_too_long', 'That voice note is too long'),
+    ]) {
+      final assistant = FakeAssistantApi(
+        error: ApiException(statusCode: 403, code: code, message: 'server text'),
+      );
+      await tester.pumpWidget(_host(assistant: assistant));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('assistant-input')), 'taxi 100');
+      await tester.tap(find.byKey(const Key('assistant-send')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(text), findsOneWidget, reason: code);
+    }
   });
 
   testWidgets('without microphone permission it says how to fix it', (tester) async {

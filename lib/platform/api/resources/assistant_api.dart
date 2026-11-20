@@ -22,6 +22,7 @@ class AssistantStatusDto {
     required this.enabled,
     required this.hourlyLimit,
     this.allowed = false,
+    this.maxVoiceSeconds = 60,
   });
 
   /// The server has a model configured.
@@ -31,10 +32,16 @@ class AssistantStatusDto {
   final bool allowed;
   final int hourlyLimit;
 
+  /// The longest voice note this plan accepts. Recording stops here and what was said is sent.
+  final int maxVoiceSeconds;
+
+  Duration get maxVoiceNote => Duration(seconds: maxVoiceSeconds);
+
   factory AssistantStatusDto.fromJson(Map<String, Object?> json) => AssistantStatusDto(
     enabled: json['enabled'] as bool,
     allowed: (json['allowed'] as bool?) ?? false,
     hourlyLimit: (json['hourly_limit'] as num).toInt(),
+    maxVoiceSeconds: (json['max_voice_seconds'] as num?)?.toInt() ?? 60,
   );
 }
 
