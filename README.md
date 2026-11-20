@@ -14,6 +14,13 @@ flutter run --release               # profile-free build, for timing the real th
 Simulator against a backend on `localhost`) and `make iphone` (the physical phone, pointed at the
 Mac's LAN IP via `env/dev.json`). Add `MODE=release` to either.
 
+Android works the same way: `make android` (the phone against the Mac's backend), `make
+android-prod` (against the deployed backend) and `make android-install` (a release APK against the
+deployed backend, installed to stay, like `make iphone-install`). They pick the first Android device
+attached; `ANDROID=<id>` chooses another (`make devices` lists them). Once: install Android Studio
+so the SDK is there, run `flutter doctor --android-licenses`, and on the phone turn on Developer
+options > USB debugging (tap Build number 7 times to reveal Developer options).
+
 ## Layout
 
 ```

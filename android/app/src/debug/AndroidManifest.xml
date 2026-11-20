@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Debug builds only: let `make android` reach a backend on the Mac over plain http
+         (env/dev.json). Android refuses cleartext http otherwise. Release builds talk to the
+         deployed backend over https and keep the default. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

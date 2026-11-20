@@ -4,10 +4,13 @@
 #   make devices                 what's plugged in / bootable
 #   make sim                     iOS Simulator, talking to a backend on localhost
 #   make iphone                  the physical iPhone, talking to the Mac's LAN IP
+#   make android                 the Android phone (USB or wireless debugging), same LAN backend
+#   make android-install         a standalone release build on the Android phone, pointed at prod
 #
 # Overrides (all optional):
 #   IPHONE="endalk’s iPhone"     physical device name or UDID
 #   SIM="iPhone 16"              simulator name
+#   ANDROID=R5CT1234ABC          Android device id (default: the first Android device attached)
 #   PORT=8000                    local backend port
 #   IP=192.168.1.4               LAN IP, if auto-detection picks the wrong interface
 #   MODE=release                 debug (default) | profile | release
@@ -19,6 +22,11 @@ SIM    ?= iPhone 16 Pro
 PORT   ?= $(or $(port),8000)
 IP     ?= $(ip)
 MODE   ?= debug
+# The first attached Android device (phone or emulator), unless ANDROID= names one. Looked up only
+# when an android target needs it, and then once (`flutter devices` takes a few seconds).
+FIRST_ANDROID = $(shell flutter devices --machine 2>/dev/null | python3 tool/first_android_device.py)
+ANDROID ?= $(eval ANDROID := $(FIRST_ANDROID))$(ANDROID)
+APK      := build/app/outputs/flutter-apk/app-release.apk
 
 DEV_ENV   := env/dev.json
 PROD_ENV  := env/prod.json
@@ -69,6 +77,37 @@ iphone-install: ## Install a standalone release build on the iPhone, then exit (
 	@echo "Installed a release build. If the phone says the developer is untrusted, tap through:"
 	@echo "  Settings > General > VPN & Device Management > Apple Development: <your Apple ID> > Trust"
 	@$(MAKE) --no-print-directory profile-expiry
+
+# -- Android ---------------------------------------------------------------------------
+# One-time on the phone: Settings > About phone > tap "Build number" 7 times, then
+# Settings > System > Developer options > USB debugging (or Wireless debugging) on.
+# On the Mac: the Android SDK (Android Studio, or `brew install --cask android-commandlinetools`),
+# then `flutter doctor --android-licenses`.
+
+.PHONY: android-check
+android-check:
+	@flutter doctor 2>/dev/null | grep -q '\[✓\] Android toolchain' \
+		|| { echo "No Android SDK. Install Android Studio (https://developer.android.com/studio),"; \
+		     echo "open it once to install the SDK, then run: flutter doctor --android-licenses"; exit 1; }
+	@test -n "$(ANDROID)" \
+		|| { echo "No Android device found. Plug the phone in (or pair Wireless debugging),"; \
+		     echo "allow USB debugging on the phone, then check with: make devices"; exit 1; }
+
+.PHONY: android
+android: android-check $(DEV_ENV) ## Run on the Android phone against the Mac's backend (env/dev.json)
+	$(RUN) -d "$(ANDROID)" --dart-define-from-file=$(DEV_ENV)
+
+.PHONY: android-prod
+android-prod: android-check ## Run on the Android phone against the deployed backend
+	$(RUN) -d "$(ANDROID)" --dart-define-from-file=$(PROD_ENV)
+
+.PHONY: android-install
+android-install: android-check ## Install a standalone release build on the Android phone (prod)
+	flutter build apk --release --dart-define-from-file=$(PROD_ENV)
+	flutter install --release -d "$(ANDROID)"
+	@echo
+	@echo "Installed $(APK) on $(ANDROID). It keeps working after unplugging; no expiry, unlike iOS."
+	@echo "To share it: send $(APK) and open it on the phone (allow installs from that app)."
 
 .PHONY: profile-expiry
 profile-expiry: ## Show when the free-account signing profile stops launching the app
@@ -128,6 +167,7 @@ check: analyze test ## Run analyze + test (CI check)
 .PHONY: build-apk
 build-apk: ## Build a release APK pointed at production
 	flutter build apk --release --dart-define-from-file=$(PROD_ENV)
+	@echo "APK: $(APK)"
 
 .PHONY: build-ios
 build-ios: ## Build a release iOS app pointed at production
