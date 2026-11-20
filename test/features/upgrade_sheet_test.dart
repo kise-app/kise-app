@@ -72,14 +72,14 @@ void main() {
     await _open(tester);
     expect(
       find.descendant(
-        of: find.byKey(const Key('upgrade-price-basic')),
+        of: find.byKey(const Key('plan-card-basic')),
         matching: find.text('100 birr a month'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
-        of: find.byKey(const Key('upgrade-price-pro')),
+        of: find.byKey(const Key('plan-card-pro')),
         matching: find.text('300 birr a month'),
       ),
       findsOneWidget,
@@ -137,7 +137,7 @@ void main() {
     expect(find.text('Could not open that'), findsOneWidget);
   });
 
-  testWidgets('a plan without a price is left out', (tester) async {
+  testWidgets('a plan without a price still gets its card, marked as such', (tester) async {
     final onlyPro = PaymentInfoDto.fromJson({
       'ready': true,
       'accounts': [
@@ -153,8 +153,18 @@ void main() {
     });
     await tester.pumpWidget(_host(FakePlansApi(payment: onlyPro)));
     await _open(tester);
-    expect(find.byKey(const Key('upgrade-price-pro')), findsOneWidget);
-    expect(find.byKey(const Key('upgrade-price-basic')), findsNothing);
+    expect(find.byKey(const Key('plan-card-pro')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('plan-price-basic'))).data, 'Price on request');
+    // Basic includes none of the assistant: crosses, not ticks.
+    final basic = find.byKey(const Key('plan-card-basic'));
+    expect(find.descendant(of: basic, matching: find.text('No receipt scans')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('plan-card-pro')),
+        matching: find.text('Unlimited receipt scans'),
+      ),
+      findsOneWidget,
+    );
     expect(onlyPro.priceOf('pro'), '300 birr a month');
     expect(onlyPro.priceOf('basic'), '');
   });
@@ -183,12 +193,10 @@ void main() {
     });
     await tester.pumpWidget(_host(FakePlansApi(payment: info)));
     await _open(tester);
-    expect(find.text('Basic · yours now'), findsOneWidget);
+    expect(find.byKey(const Key('plan-current-basic')), findsOneWidget);
+    expect(find.byKey(const Key('plan-current-family')), findsNothing);
     expect(
-      find.descendant(
-        of: find.byKey(const Key('upgrade-price-family')),
-        matching: find.text('Family'),
-      ),
+      find.descendant(of: find.byKey(const Key('plan-card-family')), matching: find.text('Family')),
       findsOneWidget,
     );
   });

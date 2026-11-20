@@ -30,6 +30,9 @@ class PlanPriceDto {
     required this.aiEnabled,
     this.name = '',
     this.current = false,
+    this.typedRequests = false,
+    this.receiptsPerMonth = 0,
+    this.voicePerMonth = 0,
   });
 
   /// The plan's code: `basic`, `pro`, or one an admin added.
@@ -47,13 +50,30 @@ class PlanPriceDto {
   /// The plan this account is on now.
   final bool current;
 
+  /// Typing what was spent, and typed questions.
+  final bool typedRequests;
+
+  /// A month; null is no monthly limit, 0 is none.
+  final int? receiptsPerMonth;
+  final int? voicePerMonth;
+
   factory PlanPriceDto.fromJson(Map<String, Object?> json) => PlanPriceDto(
     plan: json['plan'] as String,
     name: (json['name'] as String?) ?? '',
     price: (json['price'] as String?) ?? '',
     aiEnabled: (json['ai_enabled'] as bool?) ?? false,
     current: (json['current'] as bool?) ?? false,
+    typedRequests: (json['typed_requests'] as bool?) ?? (json['ai_enabled'] as bool? ?? false),
+    receiptsPerMonth: _monthly(json, 'receipts_per_month'),
+    voicePerMonth: _monthly(json, 'voice_per_month'),
   );
+
+  /// An older server sends no limits: read them from ai_enabled, as it meant then.
+  static int? _monthly(Map<String, Object?> json, String key) => json.containsKey(key)
+      ? (json[key] as num?)?.toInt()
+      : ((json['ai_enabled'] as bool?) ?? false)
+      ? null
+      : 0;
 }
 
 class PaymentInfoDto {

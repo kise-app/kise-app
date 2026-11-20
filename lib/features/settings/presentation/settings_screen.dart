@@ -781,14 +781,10 @@ class _PlanCard extends ConsumerWidget {
         plan.receiptsPerMonth == null &&
         plan.voicePerMonth == null;
     String name(String am, String en) => plan.name.isNotEmpty ? plan.name : settings.say(am, en);
-    final ending = days == null ? '' : settings.say(' · $days ቀን ይቀራል', ' · $days days left');
     final (title, detail) = switch (plan.effective) {
       'trial' => (
         name('የሙከራ ጊዜ', 'Trial'),
-        settings.say(
-          'ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ · ${days ?? 0} ቀን ይቀራል',
-          'Everything, including the assistant · ${days ?? 0} days left',
-        ),
+        settings.say('ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ', 'Everything, including the assistant'),
       ),
       'basic' => (
         name('መሰረታዊ', 'Basic'),
@@ -801,29 +797,150 @@ class _PlanCard extends ConsumerWidget {
       ),
       _ => (
         name('ፕሮ', 'Pro'),
-        (plan.aiEnabled
-                ? settings.say('ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
-                : settings.say('ከረዳቱ በስተቀር ሁሉም', 'Everything except the assistant')) +
-            ending,
+        plan.aiEnabled
+            ? settings.say('ሁሉም አገልግሎቶች፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
+            : settings.say('ከረዳቱ በስተቀር ሁሉም', 'Everything except the assistant'),
       ),
     };
+    String allowance(int? value, String am, String en) => value == null
+        ? settings.say('ያልተገደበ $am', 'Unlimited $en')
+        : value == 0
+        ? settings.say('$am የለም', 'No $en')
+        : settings.say('በወር $value $am', '$value $en a month');
+    final accent = switch (plan.effective) {
+      'trial' => const Color(0xFFF2B234),
+      'basic' => scheme.outlineVariant,
+      _ => plan.aiEnabled ? scheme.primary : scheme.outline,
+    };
+    Widget chip(IconData icon, String text, {bool on = true}) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: on ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: on ? scheme.onPrimaryContainer : scheme.onSurfaceVariant),
+          const SizedBox(width: 5),
+          Text(
+            text,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: on ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionTitle(title: settings.say('እቅድ', 'Plan')),
-        Card(
-          margin: EdgeInsets.zero,
-          child: ListTile(
-            key: const Key('plan-card'),
-            leading: Icon(
-              plan.aiEnabled ? Icons.workspace_premium_rounded : Icons.lock_outline_rounded,
-              color: plan.aiEnabled ? scheme.primary : scheme.onSurfaceVariant,
-            ),
-            title: Text(title, key: const Key('plan-name')),
-            subtitle: Text(detail, style: theme.textTheme.bodySmall),
-            // Anyone not on Pro can see how to get it, including during a trial.
+        Material(
+          key: const Key('plan-card'),
+          color: scheme.surface,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: scheme.outlineVariant),
+          ),
+          child: InkWell(
+            // Anyone without all of the assistant can see the plans, including during a trial.
             onTap: isTop ? null : () => showUpgradeSheet(context, settings),
-            trailing: isTop ? null : const Icon(Icons.chevron_right_rounded),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(height: 5, color: accent),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            plan.aiEnabled
+                                ? Icons.workspace_premium_rounded
+                                : Icons.lock_outline_rounded,
+                            color: plan.aiEnabled ? scheme.primary : scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              title,
+                              key: const Key('plan-name'),
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          if (days != null)
+                            Container(
+                              key: const Key('plan-days-left'),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: days <= 3
+                                    ? scheme.errorContainer
+                                    : scheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(
+                                settings.say('$days ቀን ይቀራል', '$days days left'),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: days <= 3
+                                      ? scheme.onErrorContainer
+                                      : scheme.onSecondaryContainer,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        detail,
+                        style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                      if (plan.aiEnabled) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            chip(
+                              Icons.receipt_long_rounded,
+                              allowance(plan.receiptsPerMonth, 'ደረሰኝ', 'scans'),
+                              on: plan.receiptsPerMonth != 0,
+                            ),
+                            chip(
+                              Icons.mic_rounded,
+                              allowance(plan.voicePerMonth, 'ድምፅ', 'voice notes'),
+                              on: plan.voicePerMonth != 0,
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (!isTop) ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Text(
+                              settings.say('እቅዶችን ይመልከቱ', 'See plans'),
+                              key: const Key('plan-see-plans'),
+                              style: theme.textTheme.labelLarge?.copyWith(
+                                color: scheme.primary,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: scheme.primary, size: 20),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],

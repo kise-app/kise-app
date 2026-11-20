@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../platform/api/api.dart';
 import '../../platform/links.dart';
 import '../../platform/settings.dart';
+import 'plan_card.dart';
 
 /// Fetched each time the sheet opens, so a change in the portal shows without a restart. Any
 /// failure reads as "not set up yet" rather than an error.
@@ -43,13 +44,6 @@ class UpgradeSheet extends ConsumerWidget {
     final theme = Theme.of(context);
     final info = ref.watch(paymentInfoProvider);
 
-    Widget feature(IconData icon, String text) => ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: theme.colorScheme.primary),
-      title: Text(text),
-    );
-
     return SingleChildScrollView(
       key: const Key('upgrade-sheet'),
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -58,25 +52,19 @@ class UpgradeSheet extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            settings.say('ኪሴ ፕሮ', 'Kise Pro'),
+            settings.say('እቅድ ይምረጡ', 'Choose a plan'),
             style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
           Text(
             settings.say(
-              'ፕሮ ረዳቱን ያካትታል። ሌሎች ሁሉም አገልግሎቶች በመሰረታዊ እቅድም ይቀጥላሉ።',
-              'Pro adds the assistant. Everything else keeps working on Basic too.',
+              'ረዳቱ (ድምፅ፣ ደረሰኝ፣ ጥያቄ) በእቅዱ ይወሰናል። ሌሎች ሁሉም አገልግሎቶች በሁሉም እቅድ ይሰራሉ።',
+              'The assistant (voice, receipts, questions) depends on the plan. '
+                  'Everything else works on every plan.',
             ),
-            style: theme.textTheme.bodyMedium,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 4),
-          feature(Icons.mic_rounded, settings.say('በድምፅ መመዝገብ', 'Record by voice')),
-          feature(Icons.receipt_long_rounded, settings.say('ደረሰኝ ፎቶ ማንበብ', 'Read receipt photos')),
-          feature(
-            Icons.question_answer_rounded,
-            settings.say('ስለ ወጪዎ መጠየቅ', 'Ask about your spending'),
-          ),
-          const Divider(height: 24),
+          const SizedBox(height: 16),
           info.when(
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
@@ -139,41 +127,23 @@ class _HowToPay extends ConsumerWidget {
       key: const Key('upgrade-how-to-pay'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (payment.plans.any((p) => p.price.isNotEmpty)) ...[
-          Text(settings.say('ዋጋ', 'Prices'), style: step),
-          const SizedBox(height: 8),
-          for (final plan in payment.plans)
-            if (plan.price.isNotEmpty)
-              Card(
-                key: Key('upgrade-price-${plan.plan}'),
-                margin: const EdgeInsets.only(bottom: 8),
-                color: plan.aiEnabled ? theme.colorScheme.primaryContainer : null,
-                child: ListTile(
-                  leading: Icon(
-                    plan.aiEnabled ? Icons.workspace_premium_rounded : Icons.check_circle_outline,
-                    color: plan.aiEnabled ? theme.colorScheme.primary : null,
-                  ),
-                  title: Text(
-                    plan.current
-                        ? settings.say(
-                            '${_planName(plan, settings)} · አሁን ያለዎት',
-                            '${_planName(plan, settings)} · yours now',
-                          )
-                        : _planName(plan, settings),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(
-                    plan.aiEnabled
-                        ? settings.say('ሁሉም፣ ረዳቱን ጨምሮ', 'Everything, including the assistant')
-                        : settings.say('ከረዳቱ በስተቀር ሁሉም', 'Everything except the assistant'),
-                  ),
-                  trailing: Text(
-                    plan.price,
-                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+        if (payment.plans.isNotEmpty) ...[
+          PlanCardRow(
+            settings: settings,
+            plans: [
+              for (final plan in payment.plans)
+                PlanSummary(
+                  code: plan.plan,
+                  name: _planName(plan, settings),
+                  price: plan.price,
+                  typedRequests: plan.typedRequests,
+                  receiptsPerMonth: plan.receiptsPerMonth,
+                  voicePerMonth: plan.voicePerMonth,
+                  current: plan.current,
                 ),
-              ),
-          const SizedBox(height: 12),
+            ],
+          ),
+          const SizedBox(height: 20),
         ],
         Text(settings.say('1. ከእነዚህ ወደ አንዱ ይክፈሉ', '1. Pay into one of these'), style: step),
         const SizedBox(height: 8),
