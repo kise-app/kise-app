@@ -66,6 +66,7 @@ Widget _host({
   FakeRecorder? recorder,
   FakePicker? picker,
   FakeFixedExpensesApi? fixedExpenses,
+  FakeCategoriesApi? categories,
 }) => ProviderScope(
   overrides: [
     todayProvider.overrideWithValue(_today),
@@ -78,7 +79,7 @@ Widget _host({
       assistant: assistant,
       expenses: expenses,
       fixedExpenses: fixedExpenses,
-      categories: FakeCategoriesApi([category('c1', 'Taxi'), category('c2', 'Food')]),
+      categories: categories ?? FakeCategoriesApi([category('c1', 'Taxi'), category('c2', 'Food')]),
     ),
   ],
   child: MaterialApp(
@@ -219,6 +220,68 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining(text), findsOneWidget, reason: code);
     }
+  });
+
+  testWidgets('a suggested new category is created on save and the expense filed under it', (
+    tester,
+  ) async {
+    final categories = FakeCategoriesApi([category('c1', 'Taxi'), category('c2', 'Other')]);
+    final expenses = FakeExpensesApi();
+    final assistant = FakeAssistantApi(
+      reply: replyOf([
+        draftOf(
+          categoryId: 'c2',
+          categoryName: 'Other',
+          amountMinor: 800000,
+          newCategory: 'Rent',
+          warnings: ['new_category'],
+        ),
+      ]),
+    );
+    await tester.pumpWidget(
+      _host(assistant: assistant, expenses: expenses, categories: categories),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('assistant-input')), 'rent 8000');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rent'), findsOneWidget);
+    expect(find.text('New category'), findsOneWidget);
+    expect(find.text('Use Other instead'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('assistant-save')));
+    await tester.pumpAndSettle();
+    expect(categories.calls, contains('create:Rent:::'));
+    final rent = categories.items.singleWhere((c) => c.name == 'Rent');
+    expect(expenses.lastRecord!['category_id'], rent.id);
+  });
+
+  testWidgets('turning the new category down files the expense under the existing one', (
+    tester,
+  ) async {
+    final categories = FakeCategoriesApi([category('c1', 'Taxi'), category('c2', 'Other')]);
+    final expenses = FakeExpensesApi();
+    final assistant = FakeAssistantApi(
+      reply: replyOf([draftOf(categoryId: 'c2', categoryName: 'Other', newCategory: 'Rent')]),
+    );
+    await tester.pumpWidget(
+      _host(assistant: assistant, expenses: expenses, categories: categories),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('assistant-input')), 'rent 8000');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('new-category-toggle')));
+    await tester.pump();
+    expect(find.text('Filed under Other'), findsOneWidget);
+    expect(find.text('Create Rent'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('assistant-save')));
+    await tester.pumpAndSettle();
+    expect(categories.calls.where((c) => c.startsWith('create:')), isEmpty);
+    expect(expenses.lastRecord!['category_id'], 'c2');
   });
 
   testWidgets('without microphone permission it says how to fix it', (tester) async {

@@ -915,7 +915,9 @@ DraftExpenseDto draftOf({
   String? note,
   Map<String, Object?>? item,
   List<String> warnings = const [],
+  String? newCategory,
 }) => DraftExpenseDto.fromJson({
+  'new_category': newCategory,
   'category_id': categoryId,
   'category_name': categoryName,
   'category_name_am': null,

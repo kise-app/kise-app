@@ -77,11 +77,16 @@ class DraftExpenseDto {
     required this.note,
     required this.item,
     required this.warnings,
+    this.newCategory,
   });
 
   final String categoryId;
   final String categoryName;
   final String? categoryNameAm;
+
+  /// A category the assistant suggests creating because none of the person's fits. Until it is
+  /// created the draft is filed under [categoryId] (the closest, or Other).
+  final String? newCategory;
   final Money amount;
   final SpendDateDto spentOn;
   final String paymentMethod;
@@ -103,6 +108,7 @@ class DraftExpenseDto {
       note: json['note'] as String?,
       item: item is Map ? DraftItemDto.fromJson(item.cast<String, Object?>()) : null,
       warnings: ((json['warnings'] as List?) ?? const []).cast<String>(),
+      newCategory: json['new_category'] as String?,
     );
   }
 }
@@ -119,10 +125,14 @@ class FixedDraftDto {
     required this.startPeriod,
     required this.note,
     required this.warnings,
+    this.newCategory,
   });
 
   final String title;
   final String categoryId;
+
+  /// As on [DraftExpenseDto]: a category the assistant suggests creating.
+  final String? newCategory;
   final String categoryName;
   final String? categoryNameAm;
   final Money amount;
@@ -141,6 +151,7 @@ class FixedDraftDto {
     startPeriod: periodFromJson((json['start_period'] as Map).cast<String, Object?>()),
     note: json['note'] as String?,
     warnings: ((json['warnings'] as List?) ?? const []).cast<String>(),
+    newCategory: json['new_category'] as String?,
   );
 }
 

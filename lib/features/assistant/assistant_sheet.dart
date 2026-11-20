@@ -116,6 +116,59 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
   List<bool> _selected = [];
   List<FixedDraftDto> _fixed = [];
   List<bool> _fixedSelected = [];
+
+  /// Suggested new categories the person turned down (lower-cased): those drafts stay filed under
+  /// the closest existing category.
+  final Set<String> _declinedCategories = {};
+
+  /// The new category a draft will be filed under, or null to keep its existing one.
+  String? _newCategory(String? suggestion) =>
+      suggestion != null && !_declinedCategories.contains(suggestion.toLowerCase())
+      ? suggestion
+      : null;
+
+  void _toggleNewCategory(String suggestion) => setState(() {
+    final key = suggestion.toLowerCase();
+    if (!_declinedCategories.remove(key)) _declinedCategories.add(key);
+  });
+
+  /// Create the suggested categories the ticked drafts use, once each. Returns lower-cased name ->
+  /// id; a name that already exists (made meanwhile, or in another language) is looked up.
+  Future<Map<String, String>> _createSuggestedCategories(void Function(String) onFailure) async {
+    final wanted = <String, String>{};
+    for (var i = 0; i < _drafts.length; i++) {
+      final name = _selected[i] ? _newCategory(_drafts[i].newCategory) : null;
+      if (name != null) wanted.putIfAbsent(name.toLowerCase(), () => name);
+    }
+    for (var i = 0; i < _fixed.length; i++) {
+      final name = _fixedSelected[i] ? _newCategory(_fixed[i].newCategory) : null;
+      if (name != null) wanted.putIfAbsent(name.toLowerCase(), () => name);
+    }
+    if (wanted.isEmpty) return const {};
+    final api = ref.read(categoriesApiProvider);
+    final ids = <String, String>{};
+    for (final MapEntry(key: key, value: name) in wanted.entries) {
+      try {
+        ids[key] = (await api.create(name: name)).id;
+      } on ApiException catch (error) {
+        if (error.code != 'category_name_taken') {
+          onFailure(error.message);
+          continue;
+        }
+        try {
+          final existing = (await api.list()).where(
+            (c) => c.name.toLowerCase() == key || (c.nameAm ?? '').toLowerCase() == key,
+          );
+          if (existing.isNotEmpty) ids[key] = existing.first.id;
+        } on ApiException catch (again) {
+          onFailure(again.message);
+        }
+      }
+    }
+    ref.invalidate(categoriesProvider);
+    return ids;
+  }
+
   List<PaymentDraftDto> _payments = [];
   List<bool> _paymentSelected = [];
   String? _answer;
@@ -375,6 +428,14 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       }
     }
 
+    // Categories the assistant suggested go in first, so the expenses can be filed under them. If
+    // one cannot be made, its drafts keep their existing category rather than not saving.
+    final newIds = await _createSuggestedCategories((message) => failure ??= message);
+    String categoryFor(String existing, String? suggestion) {
+      final name = _newCategory(suggestion);
+      return name == null ? existing : newIds[name.toLowerCase()] ?? existing;
+    }
+
     final keptDrafts = <DraftExpenseDto>[];
     for (var i = 0; i < _drafts.length; i++) {
       final draft = _drafts[i];
@@ -384,7 +445,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       }
       final ok = await attempt(
         () => expenses.record(
-          categoryId: draft.categoryId,
+          categoryId: categoryFor(draft.categoryId, draft.newCategory),
           amountMinor: draft.amount.minorUnits,
           date: draft.spentOn.gregorian,
           dateCalendar: 'gregorian',
@@ -407,7 +468,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       }
       final ok = await attempt(
         () => fixed.schedule(
-          categoryId: draft.categoryId,
+          categoryId: categoryFor(draft.categoryId, draft.newCategory),
           title: draft.title,
           amountMinor: draft.amount.minorUnits,
           startPeriod: draft.startPeriod,
@@ -703,6 +764,10 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                   key: Key('draft-$i'),
                   draft: _drafts[i],
                   category: categories[_drafts[i].categoryId],
+                  newCategory: _newCategory(_drafts[i].newCategory),
+                  onToggleNewCategory: busy || _drafts[i].newCategory == null
+                      ? null
+                      : () => _toggleNewCategory(_drafts[i].newCategory!),
                   settings: settings,
                   selected: _selected[i],
                   onSelected: busy ? null : (v) => setState(() => _selected[i] = v),
@@ -713,6 +778,10 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                   key: Key('fixed-draft-$i'),
                   draft: _fixed[i],
                   category: categories[_fixed[i].categoryId],
+                  newCategory: _newCategory(_fixed[i].newCategory),
+                  onToggleNewCategory: busy || _fixed[i].newCategory == null
+                      ? null
+                      : () => _toggleNewCategory(_fixed[i].newCategory!),
                   settings: settings,
                   selected: _fixedSelected[i],
                   onSelected: busy ? null : (v) => setState(() => _fixedSelected[i] = v),
@@ -756,10 +825,16 @@ class _DraftCard extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     required this.onTap,
+    this.newCategory,
+    this.onToggleNewCategory,
   });
 
   final DraftExpenseDto draft;
   final CategoryDto? category;
+
+  /// The new category it will be filed under, or null for [category].
+  final String? newCategory;
+  final VoidCallback? onToggleNewCategory;
   final AppSettings settings;
   final bool selected;
   final ValueChanged<bool>? onSelected;
@@ -786,10 +861,11 @@ class _DraftCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final name = settings.isAmharic
+    final existing = settings.isAmharic
         ? (category?.nameAm ?? draft.categoryNameAm ?? draft.categoryName)
         : (category?.name ?? draft.categoryName);
-    final color = categoryColor(category?.color);
+    final name = newCategory ?? existing;
+    final color = newCategory != null ? scheme.primary : categoryColor(category?.color);
     final details = [
       _date(),
       paymentMethodLabel(draft.paymentMethod, settings),
@@ -811,7 +887,13 @@ class _DraftCard extends StatelessWidget {
                 value: selected,
                 onChanged: onSelected == null ? null : (v) => onSelected!(v ?? false),
               ),
-              Icon(categoryIcon(category?.icon), color: color, size: 20),
+              Icon(
+                newCategory != null
+                    ? Icons.add_circle_outline_rounded
+                    : categoryIcon(category?.icon),
+                color: color,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -819,16 +901,25 @@ class _DraftCard extends StatelessWidget {
                   children: [
                     Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
                     Text(details, style: theme.textTheme.bodySmall),
-                    if (draft.warnings.isNotEmpty)
+                    if (draft.warnings.any((w) => w != 'new_category'))
                       Wrap(
                         spacing: 6,
                         children: [
                           for (final w in draft.warnings)
-                            Text(
-                              '⚠ ${_warning(w)}',
-                              style: theme.textTheme.labelSmall?.copyWith(color: scheme.tertiary),
-                            ),
+                            if (w != 'new_category')
+                              Text(
+                                '⚠ ${_warning(w)}',
+                                style: theme.textTheme.labelSmall?.copyWith(color: scheme.tertiary),
+                              ),
                         ],
+                      ),
+                    if (draft.newCategory != null)
+                      _NewCategoryChoice(
+                        suggestion: draft.newCategory!,
+                        accepted: newCategory != null,
+                        existing: existing,
+                        settings: settings,
+                        onToggle: onToggleNewCategory,
                       ),
                   ],
                 ),
@@ -856,6 +947,7 @@ class _ChoiceCard extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.warnings = const [],
+    this.extra,
   });
 
   final IconData icon;
@@ -866,6 +958,9 @@ class _ChoiceCard extends StatelessWidget {
   final bool selected;
   final ValueChanged<bool>? onSelected;
   final List<String> warnings;
+
+  /// Anything more under the details, such as a suggested new category.
+  final Widget? extra;
 
   @override
   Widget build(BuildContext context) {
@@ -898,6 +993,7 @@ class _ChoiceCard extends StatelessWidget {
                           color: theme.colorScheme.tertiary,
                         ),
                       ),
+                    ?extra,
                   ],
                 ),
               ),
@@ -922,6 +1018,8 @@ class _FixedDraftCard extends StatelessWidget {
     required this.settings,
     required this.selected,
     required this.onSelected,
+    this.newCategory,
+    this.onToggleNewCategory,
   });
 
   final FixedDraftDto draft;
@@ -929,11 +1027,25 @@ class _FixedDraftCard extends StatelessWidget {
   final AppSettings settings;
   final bool selected;
   final ValueChanged<bool>? onSelected;
+  final String? newCategory;
+  final VoidCallback? onToggleNewCategory;
 
   @override
   Widget build(BuildContext context) {
     final start = draft.startPeriod.label(settings.language);
+    final existing = settings.isAmharic
+        ? (category?.nameAm ?? draft.categoryNameAm ?? draft.categoryName)
+        : (category?.name ?? draft.categoryName);
     return _ChoiceCard(
+      extra: draft.newCategory == null
+          ? null
+          : _NewCategoryChoice(
+              suggestion: draft.newCategory!,
+              accepted: newCategory != null,
+              existing: existing,
+              settings: settings,
+              onToggle: onToggleNewCategory,
+            ),
       icon: Icons.event_repeat_rounded,
       iconColor: categoryColor(category?.color),
       title: settings.say('በየወሩ · ${draft.title}', 'Every month · ${draft.title}'),
@@ -946,11 +1058,12 @@ class _FixedDraftCard extends StatelessWidget {
       onSelected: onSelected,
       warnings: [
         for (final w in draft.warnings)
-          switch (w) {
-            'due_day_unclear' => settings.say('ቀኑን ያረጋግጡ', 'Check the due day'),
-            'category_guessed' => settings.say('ምድቡን ያረጋግጡ', 'Check the category'),
-            _ => w,
-          },
+          if (w != 'new_category')
+            switch (w) {
+              'due_day_unclear' => settings.say('ቀኑን ያረጋግጡ', 'Check the due day'),
+              'category_guessed' => settings.say('ምድቡን ያረጋግጡ', 'Check the category'),
+              _ => w,
+            },
       ],
     );
   }
@@ -989,6 +1102,74 @@ class _PaymentDraftCard extends StatelessWidget {
             _ => w,
           },
       ],
+    );
+  }
+}
+
+/// Under a draft the assistant filed under a category the person does not have yet: say which
+/// one it will create, and let them keep the existing one instead (or take the new one back).
+class _NewCategoryChoice extends StatelessWidget {
+  const _NewCategoryChoice({
+    required this.suggestion,
+    required this.accepted,
+    required this.existing,
+    required this.settings,
+    required this.onToggle,
+  });
+
+  final String suggestion;
+  final bool accepted;
+
+  /// The category it is filed under if the new one is turned down.
+  final String existing;
+  final AppSettings settings;
+  final VoidCallback? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: accepted ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: Text(
+              accepted
+                  ? settings.say('አዲስ ምድብ ይፈጠራል', 'New category')
+                  : settings.say('በ"$existing" ውስጥ', 'Filed under $existing'),
+              key: const Key('new-category-label'),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: accepted ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          TextButton(
+            key: const Key('new-category-toggle'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              minimumSize: const Size(0, 32),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: onToggle,
+            child: Text(
+              accepted
+                  ? settings.say('"$existing" ይጠቀሙ', 'Use $existing instead')
+                  : settings.say('"$suggestion" ይፍጠሩ', 'Create $suggestion'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
