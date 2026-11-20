@@ -17,12 +17,32 @@ import '../api_client.dart';
 import 'expenses_api.dart';
 import 'fixed_expenses_api.dart' show periodFromJson;
 
+/// One kind's monthly allowance: receipt scans or voice notes.
+class UsageDto {
+  const UsageDto({required this.limit, required this.used});
+
+  /// Null is no monthly limit; 0 is not included in the plan.
+  final int? limit;
+  final int used;
+
+  int? get remaining => limit == null ? null : (limit! - used).clamp(0, limit!);
+  bool get included => limit != 0;
+
+  /// Included in the plan, and this month's are all used.
+  bool get usedUp => limit != null && limit! > 0 && used >= limit!;
+
+  factory UsageDto.fromJson(Map<String, Object?> json) =>
+      UsageDto(limit: (json['limit'] as num?)?.toInt(), used: (json['used'] as num?)?.toInt() ?? 0);
+}
+
 class AssistantStatusDto {
   const AssistantStatusDto({
     required this.enabled,
     required this.hourlyLimit,
     this.allowed = false,
     this.maxVoiceSeconds = 60,
+    this.usage = const {},
+    this.resetsOn,
   });
 
   /// The server has a model configured.
@@ -37,11 +57,24 @@ class AssistantStatusDto {
 
   Duration get maxVoiceNote => Duration(seconds: maxVoiceSeconds);
 
+  /// `receipt` and `voice`, this month. Empty from an older server: treat as no limit.
+  final Map<String, UsageDto> usage;
+
+  /// When the counts start again (`YYYY-MM-DD`).
+  final String? resetsOn;
+
+  UsageDto? usageOf(String kind) => usage[kind];
+
   factory AssistantStatusDto.fromJson(Map<String, Object?> json) => AssistantStatusDto(
     enabled: json['enabled'] as bool,
     allowed: (json['allowed'] as bool?) ?? false,
     hourlyLimit: (json['hourly_limit'] as num).toInt(),
     maxVoiceSeconds: (json['max_voice_seconds'] as num?)?.toInt() ?? 60,
+    usage: {
+      for (final item in (json['usage'] as List? ?? const []))
+        if (item is Map) item['kind'] as String: UsageDto.fromJson(item.cast<String, Object?>()),
+    },
+    resetsOn: json['resets_on'] as String?,
   );
 }
 

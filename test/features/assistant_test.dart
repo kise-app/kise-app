@@ -284,6 +284,67 @@ void main() {
     expect(expenses.lastRecord!['category_id'], 'c2');
   });
 
+  testWidgets("with this month's voice notes used up, it offers the plans instead of recording", (
+    tester,
+  ) async {
+    final recorder = FakeRecorder();
+    final assistant = FakeAssistantApi(
+      usage: const {'voice': UsageDto(limit: 20, used: 20), 'receipt': UsageDto(limit: 5, used: 1)},
+    );
+    await tester.pumpWidget(_host(assistant: assistant, recorder: recorder));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-mic')));
+    await tester.pumpAndSettle();
+    expect(recorder.calls, isEmpty, reason: 'nothing is recorded');
+    expect(find.textContaining("used this month's 20 voice notes"), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assistant-see-plans')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('upgrade-sheet')), findsOneWidget);
+  });
+
+  testWidgets('a plan without receipt scans offers the plans when the camera is tapped', (
+    tester,
+  ) async {
+    final picker = FakePicker(null);
+    final assistant = FakeAssistantApi(usage: const {'receipt': UsageDto(limit: 0, used: 0)});
+    await tester.pumpWidget(_host(assistant: assistant, picker: picker));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-camera')));
+    await tester.pumpAndSettle();
+    expect(picker.sources, isEmpty);
+    expect(find.text('Your plan does not include receipt scans.'), findsOneWidget);
+    expect(find.byKey(const Key('assistant-see-plans')), findsOneWidget);
+  });
+
+  testWidgets('when the server says the allowance is used up, the plans are offered', (
+    tester,
+  ) async {
+    final assistant = FakeAssistantApi(
+      error: const ApiException(statusCode: 403, code: 'allowance_used_up', message: 'x'),
+    );
+    await tester.pumpWidget(_host(assistant: assistant));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('assistant-input')), 'taxi 100');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Upgrade for more'), findsOneWidget);
+    expect(find.byKey(const Key('assistant-see-plans')), findsOneWidget);
+  });
+
+  testWidgets('other failures do not offer the plans', (tester) async {
+    final assistant = FakeAssistantApi(
+      error: const ApiException(statusCode: 502, code: 'assistant_failed', message: 'x'),
+    );
+    await tester.pumpWidget(_host(assistant: assistant));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('assistant-input')), 'taxi 100');
+    await tester.tap(find.byKey(const Key('assistant-send')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('assistant-error')), findsOneWidget);
+    expect(find.byKey(const Key('assistant-see-plans')), findsNothing);
+  });
+
   testWidgets('without microphone permission it says how to fix it', (tester) async {
     final recorder = FakeRecorder(allowed: false);
     final assistant = FakeAssistantApi();

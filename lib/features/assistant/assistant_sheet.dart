@@ -177,6 +177,9 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
   String? _heard;
   String? _error;
 
+  /// The last failure was the plan's limit (or the plan not including it): offer the plans.
+  bool _offerUpgrade = false;
+
   AppSettings get _settings => ref.read(settingsProvider);
 
   String get _today {
@@ -205,6 +208,49 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
   Duration get _maxVoiceNote =>
       ref.read(assistantStatusProvider).valueOrNull?.maxVoiceNote ?? defaultMaxVoiceNote;
 
+  /// Show a failure; for a used-up allowance or a plan without it, offer the plans too.
+  void _fail(Object error) {
+    final code = error is ApiException ? error.code : null;
+    final limited = code == 'allowance_used_up' || code == 'upgrade_required';
+    // The counts changed (or the plan did): show the right "left this month" figures.
+    if (code == 'allowance_used_up') ref.invalidate(assistantStatusProvider);
+    setState(() {
+      _error = _describe(error);
+      _offerUpgrade = limited;
+    });
+  }
+
+  /// Before recording or picking a photo: if this month's are used up (or the plan has none),
+  /// say so and offer the plans, rather than letting someone record for nothing.
+  bool _blockedBy(String kind) {
+    final usage = ref.read(assistantStatusProvider).valueOrNull?.usageOf(kind);
+    if (usage == null || (usage.included && !usage.usedUp)) return false;
+    final voice = kind == 'voice';
+    setState(() {
+      _offerUpgrade = true;
+      _error = !usage.included
+          ? (voice
+                ? _settings.say(
+                    'የድምፅ መልዕክት በእቅድዎ ውስጥ የለም።',
+                    'Your plan does not include voice notes.',
+                  )
+                : _settings.say(
+                    'የደረሰኝ ንባብ በእቅድዎ ውስጥ የለም።',
+                    'Your plan does not include receipt scans.',
+                  ))
+          : (voice
+                ? _settings.say(
+                    'የዚህ ወር ${usage.limit} የድምፅ መልዕክቶች አልቀዋል። ለተጨማሪ እቅድዎን ያሳድጉ።',
+                    "You have used this month's ${usage.limit} voice notes. Upgrade for more.",
+                  )
+                : _settings.say(
+                    'የዚህ ወር ${usage.limit} የደረሰኝ ንባቦች አልቀዋል። ለተጨማሪ እቅድዎን ያሳድጉ።',
+                    "You have used this month's ${usage.limit} receipt scans. Upgrade for more.",
+                  ));
+    });
+    return true;
+  }
+
   String _describe(Object error) {
     final settings = _settings;
     if (error is ApiException) {
@@ -222,8 +268,8 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
           'The assistant is part of Pro, and your trial has ended.',
         ),
         'allowance_used_up' => settings.say(
-          'የዚህ ወር ድርሻዎ አልቋል። በሚቀጥለው ወር 1 ቀን እንደገና ይጀምራል።',
-          "You have used this month's allowance. It starts again on the 1st.",
+          'የዚህ ወር ድርሻዎ አልቋል። ለተጨማሪ እቅድዎን ያሳድጉ፣ ወይም እስከ ወሩ 1 ቀን ይጠብቁ።',
+          "You have used this month's allowance. Upgrade for more, or wait until the 1st.",
         ),
         'voice_note_too_long' => settings.say(
           'የድምፅ መልዕክቱ በጣም ረጅም ነው። አጠር አድርገው ይሞክሩ።',
@@ -240,6 +286,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
     setState(() {
       _phase = _Phase.working;
       _error = null;
+      _offerUpgrade = false;
       _answer = null;
     });
     try {
@@ -258,7 +305,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         ];
       });
     } catch (error) {
-      if (mounted) setState(() => _error = _describe(error));
+      if (mounted) _fail(error);
     } finally {
       if (mounted) setState(() => _phase = _Phase.idle);
     }
@@ -272,6 +319,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       setState(() {
         _phase = _Phase.working;
         _error = null;
+        _offerUpgrade = false;
         _answer = null;
         _heard = null;
       });
@@ -279,7 +327,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         final answer = await ref.read(assistantApiProvider).ask(text, today: _today);
         if (mounted) setState(() => _answer = answer);
       } catch (error) {
-        if (mounted) setState(() => _error = _describe(error));
+        if (mounted) _fail(error);
       } finally {
         if (mounted) setState(() => _phase = _Phase.idle);
       }
@@ -295,6 +343,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       return;
     }
     if (_phase != _Phase.idle) return;
+    if (_blockedBy('voice')) return;
     if (!await _recorder.requestPermission()) {
       setState(
         () => _error = settings.say(
@@ -314,6 +363,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
       _phase = _Phase.recording;
       _elapsed = Duration.zero;
       _error = null;
+      _offerUpgrade = false;
       _answer = null;
     });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -352,6 +402,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
     setState(() {
       _phase = _Phase.working;
       _error = null;
+      _offerUpgrade = false;
       _answer = null;
       _heard = null;
     });
@@ -371,7 +422,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
         });
       }
     } catch (error) {
-      if (mounted) setState(() => _error = _describe(error));
+      if (mounted) _fail(error);
     } finally {
       if (mounted) setState(() => _phase = _Phase.idle);
     }
@@ -379,6 +430,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
 
   Future<void> _pickReceipt(ReceiptSource source) async {
     if (_phase != _Phase.idle) return;
+    if (_blockedBy('receipt')) return;
     final CapturedMedia? image;
     try {
       image = await ref.read(receiptPickerProvider).pick(source);
@@ -411,6 +463,7 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
     setState(() {
       _phase = _Phase.saving;
       _error = null;
+      _offerUpgrade = false;
     });
     final expenses = ref.read(expensesApiProvider);
     final fixed = ref.read(fixedExpensesApiProvider);
@@ -601,6 +654,8 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                   : (selection) => setState(() {
                       _mode = selection.first;
                       _error = null;
+                      _offerUpgrade = false;
+                      _offerUpgrade = false;
                       _answer = null;
                     }),
             ),
@@ -716,6 +771,15 @@ class _AssistantSheetState extends ConsumerState<AssistantSheet> {
                 key: const Key('assistant-error'),
                 style: TextStyle(color: scheme.error),
               ),
+              if (_offerUpgrade) ...[
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  key: const Key('assistant-see-plans'),
+                  onPressed: () => showUpgradeSheet(context, settings),
+                  icon: const Icon(Icons.workspace_premium_rounded),
+                  label: Text(settings.say('እቅዶችን ይመልከቱ', 'See plans')),
+                ),
+              ],
             ],
             if (_answer != null) ...[
               const SizedBox(height: 16),
@@ -1099,6 +1163,10 @@ class _PaymentDraftCard extends StatelessWidget {
           switch (w) {
             'already_paid' => settings.say('ይህ ወር ቀድሞ ተከፍሏል', 'This month is already paid'),
             'date_unclear' => settings.say('ቀኑን ያረጋግጡ', 'Check the date'),
+            'amount_differs' => settings.say(
+              'የተባለው መጠን ከተቀመጠው ይለያል፤ የተቀመጠው ይመዘገባል',
+              'A different amount was heard; the set cost is recorded',
+            ),
             _ => w,
           },
       ],

@@ -823,6 +823,7 @@ class FakeAssistantApi implements AssistantApi {
     this.enabled = true,
     this.allowed = true,
     this.maxVoiceSeconds = 60,
+    this.usage = const {},
     this.reply,
     this.answer = '',
     this.error,
@@ -832,6 +833,9 @@ class FakeAssistantApi implements AssistantApi {
 
   /// The plan's longest voice note.
   final int maxVoiceSeconds;
+
+  /// This month's receipt scans and voice notes, by kind.
+  final Map<String, UsageDto> usage;
 
   /// The account's plan includes the assistant.
   final bool allowed;
@@ -851,6 +855,8 @@ class FakeAssistantApi implements AssistantApi {
     allowed: allowed,
     hourlyLimit: 30,
     maxVoiceSeconds: maxVoiceSeconds,
+    usage: usage,
+    resetsOn: '2026-10-01',
   );
 
   @override
