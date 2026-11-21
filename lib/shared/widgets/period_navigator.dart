@@ -37,7 +37,6 @@ class PeriodNavigator extends ConsumerWidget {
 
     final onHero = theme.extension<KiseColors>()!.heroForeground;
     final foreground = onGradient ? onHero : scheme.onSurface;
-    final secondary = onGradient ? onHero.withValues(alpha: 0.78) : scheme.onSurfaceVariant;
     final background = onGradient ? onHero.withValues(alpha: 0.16) : scheme.surfaceContainerHighest;
     final buttonBackground = onGradient ? onHero.withValues(alpha: 0.14) : theme.cardTheme.color;
 
@@ -53,25 +52,16 @@ class PeriodNavigator extends ConsumerWidget {
             background: buttonBackground,
             onPressed: () => ref.read(selectedPeriodProvider.notifier).state = period.previous,
           ),
+          // The month in the chosen calendar only: one date, not two.
           Expanded(
-            child: Column(
-              children: [
-                Text(
-                  period.label(settings.language),
-                  key: Key('${keyPrefix}period-label'),
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: foreground,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                Text(
-                  period.counterpartLabel(settings.language),
-                  key: Key('${keyPrefix}period-counterpart-label'),
-                  style: theme.textTheme.bodySmall?.copyWith(color: secondary),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+            child: Text(
+              period.label(settings.language),
+              key: Key('${keyPrefix}period-label'),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: foreground,
+              ),
+              textAlign: TextAlign.center,
             ),
           ),
           if (!isCurrent)
