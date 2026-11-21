@@ -101,6 +101,16 @@ class AssistantSheet extends ConsumerStatefulWidget {
 }
 
 class _AssistantSheetState extends ConsumerState<AssistantSheet> {
+  @override
+  void initState() {
+    super.initState();
+    // Opening the assistant reads the plan's allowance afresh, so a change made by an admin (a
+    // new plan, more voice notes) applies without restarting the app.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(assistantStatusProvider);
+    });
+  }
+
   final _input = TextEditingController();
   // Made on first use: most visits never touch the microphone, and the plugin should not be woken
   // for them — nor, in dispose, after `ref` is gone.

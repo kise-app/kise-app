@@ -849,15 +849,21 @@ class FakeAssistantApi implements AssistantApi {
     return reply ?? DraftReplyDto.fromJson({'message': '', 'drafts': <Object?>[]});
   }
 
+  /// How many times status() was asked for.
+  int statusCalls = 0;
+
   @override
-  Future<AssistantStatusDto> status() async => AssistantStatusDto(
-    enabled: enabled,
-    allowed: allowed,
-    hourlyLimit: 30,
-    maxVoiceSeconds: maxVoiceSeconds,
-    usage: usage,
-    resetsOn: '2026-10-01',
-  );
+  Future<AssistantStatusDto> status() async {
+    statusCalls++;
+    return AssistantStatusDto(
+      enabled: enabled,
+      allowed: allowed,
+      hourlyLimit: 30,
+      maxVoiceSeconds: maxVoiceSeconds,
+      usage: usage,
+      resetsOn: '2026-10-01',
+    );
+  }
 
   @override
   Future<DraftReplyDto> readText(String text, {required String today}) async {

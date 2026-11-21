@@ -56,6 +56,18 @@ class SessionController extends AsyncNotifier<SessionState> {
     }
   }
 
+  /// Fetch the profile again, quietly: a plan an admin changed shows without signing in again.
+  /// Only for an account already signed in; a failure (offline, say) keeps what was there.
+  Future<void> refreshProfile() async {
+    if (state.valueOrNull is! SignedIn) return;
+    try {
+      final profile = await _auth.me();
+      if (state.valueOrNull is SignedIn) state = AsyncData(SignedIn(profile));
+    } on ApiException {
+      // Keep the profile we have; the next refresh will try again.
+    }
+  }
+
   Future<void> signIn({required String email, required String password}) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
@@ -128,5 +140,6 @@ class SessionController extends AsyncNotifier<SessionState> {
 /// sign-out in here; the default does nothing, so the session layer needs no plugin.
 final signOutHooksProvider = Provider<Future<void> Function()>((ref) => () async {});
 
-final sessionProvider =
-    AsyncNotifierProvider<SessionController, SessionState>(SessionController.new);
+final sessionProvider = AsyncNotifierProvider<SessionController, SessionState>(
+  SessionController.new,
+);

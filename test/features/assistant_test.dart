@@ -345,6 +345,13 @@ void main() {
     expect(find.byKey(const Key('assistant-see-plans')), findsNothing);
   });
 
+  testWidgets('opening the assistant reads the plan allowance again', (tester) async {
+    final assistant = FakeAssistantApi();
+    await tester.pumpWidget(_host(assistant: assistant));
+    await tester.pumpAndSettle();
+    expect(assistant.statusCalls, greaterThanOrEqualTo(2), reason: 'fetched afresh on open');
+  });
+
   testWidgets('without microphone permission it says how to fix it', (tester) async {
     final recorder = FakeRecorder(allowed: false);
     final assistant = FakeAssistantApi();

@@ -7,10 +7,12 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'features/assistant/assistant_sheet.dart' show assistantStatusProvider;
 import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/expenses/presentation/expenses_screen.dart';
 import 'features/fixed_expenses/presentation/fixed_expenses_screen.dart';
 import 'features/settings/presentation/settings_screen.dart';
+import 'platform/session/session_controller.dart';
 import 'platform/settings.dart';
 import 'shared/month_data.dart';
 
@@ -21,16 +23,32 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
   int _index = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Signed in by now: move a budget left on the device by an older version to the account.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) uploadLegacyBudget(ref);
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back in the foreground: the plan may have changed meanwhile (an admin moved the account to
+  /// another plan), so read it and the assistant's allowance again.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    ref.invalidate(assistantStatusProvider);
+    ref.read(sessionProvider.notifier).refreshProfile();
   }
 
   @override
@@ -53,9 +71,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         decoration: BoxDecoration(
           color: theme.cardTheme.color,
           border: Border(
-            top: BorderSide(
-              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
-            ),
+            top: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5)),
           ),
         ),
         child: NavigationBar(
