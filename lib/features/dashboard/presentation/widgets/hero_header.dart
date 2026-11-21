@@ -1,8 +1,8 @@
 /// The top of the dashboard: the gradient backdrop and the greeting that sits on it.
 ///
 /// Split in two so the summary card can overlap the gradient's lower edge. [HeroBackdrop] is the
-/// painted background; [HeroHeader] is the content — greeting, today's date (in the calendar the
-/// owner chose, and only that one), and the month navigator.
+/// painted background; [HeroHeader] is the content — greeting, today in both calendars, and the
+/// month navigator.
 library;
 
 import 'dart:math' as math;
@@ -57,8 +57,9 @@ class _HeroPatternPainter extends CustomPainter {
     final centre = Offset(size.width * 0.92, size.height * 0.05);
     final radius = math.max(size.width, size.height) * 0.6;
     final glow = Paint()
-      ..shader = RadialGradient(colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0)])
-          .createShader(Rect.fromCircle(center: centre, radius: radius));
+      ..shader = RadialGradient(
+        colors: [color.withValues(alpha: 0.18), color.withValues(alpha: 0)],
+      ).createShader(Rect.fromCircle(center: centre, radius: radius));
     canvas.drawCircle(centre, radius, glow);
   }
 
@@ -75,14 +76,15 @@ class HeroHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final weekday = settings.isAmharic
-        ? ethiopianWeekdayNamesAm[today.weekday - 1]
-        : _weekdayNamesEn[today.weekday - 1];
-    // One date, in the calendar the Owner chose: the other calendar is a tap away (the calendar
-    // button), and showing both made the top of the screen busy.
-    final headline = settings.calendar == CalendarKind.ethiopian
-        ? EthiopianDate.fromGregorian(today).format(locale: settings.language.wire)
-        : '${gregorianMonthNamesEn[today.month - 1]} ${today.day}, ${today.year}';
+    final ethiopian = EthiopianDate.fromGregorian(today);
+    final weekday = ethiopianWeekdayNamesAm[today.weekday - 1];
+    final gregorian = '${gregorianMonthNamesEn[today.month - 1]} ${today.day}, ${today.year}';
+    // The headline is whichever calendar the Owner chose; the other one sits underneath. Showing
+    // the Ethiopian date to someone who picked Gregorian contradicted the month navigator.
+    final isEthiopian = settings.calendar == CalendarKind.ethiopian;
+    final headline =
+        isEthiopian ? ethiopian.format(locale: settings.language.wire) : gregorian;
+    final secondary = isEthiopian ? gregorian : ethiopian.format(locale: settings.language.wire);
     final onHero = theme.extension<KiseColors>()!.heroForeground;
 
     return SafeArea(
@@ -122,7 +124,7 @@ class HeroHeader extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 26),
             Text(
               _greeting(settings),
               key: const Key('greeting'),
@@ -130,16 +132,30 @@ class HeroHeader extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '$weekday, $headline',
+              headline,
               key: const Key('today-primary'),
-              style: theme.textTheme.headlineMedium?.copyWith(
+              style: theme.textTheme.displaySmall?.copyWith(
                 color: onHero,
                 fontWeight: FontWeight.w800,
-                height: 1.1,
-                letterSpacing: -0.3,
+                height: 1.05,
+                letterSpacing: -0.5,
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.today_outlined, size: 15, color: onHero.withValues(alpha: 0.8)),
+                const SizedBox(width: 6),
+                Text(
+                  '$secondary  ·  $weekday',
+                  key: const Key('today-secondary'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: onHero.withValues(alpha: 0.86),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
             const Padding(
               padding: EdgeInsets.only(right: 8),
               child: PeriodNavigator(onGradient: true),
@@ -159,16 +175,6 @@ class HeroHeader extends StatelessWidget {
     return settings.say('እንደምን አሉ, $name!', 'Welcome back, $name!');
   }
 }
-
-const _weekdayNamesEn = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
 
 class _HeroAction extends ConsumerWidget {
   const _HeroAction({

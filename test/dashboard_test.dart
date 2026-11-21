@@ -38,7 +38,8 @@ Widget _app({
   );
 }
 
-String _textOf(WidgetTester tester, String key) => tester.widget<Text>(find.byKey(Key(key))).data!;
+String _textOf(WidgetTester tester, String key) =>
+    tester.widget<Text>(find.byKey(Key(key))).data!;
 
 Future<void> _openSettings(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('settings-tab')));
@@ -66,9 +67,8 @@ void main() {
       await tester.pumpWidget(_app());
 
       expect(find.text('ኪሴ'), findsOneWidget);
-      // One date, with its weekday: 4 September 2026 is a Friday (ዓርብ).
-      expect(_textOf(tester, 'today-primary'), 'ዓርብ, ነሐሴ 29, 2018');
-      expect(find.byKey(const Key('today-secondary')), findsNothing);
+      expect(_textOf(tester, 'today-primary'), 'ነሐሴ 29, 2018');
+      expect(_textOf(tester, 'today-secondary'), contains('September 4, 2026'));
       expect(_textOf(tester, 'greeting'), 'እንደምን አሉ!'); // no name set yet
     });
 
@@ -77,21 +77,29 @@ void main() {
       expect(_textOf(tester, 'greeting'), 'እንደምን አሉ, ሰላም!');
     });
 
-    testWidgets('in Gregorian mode the one date is Gregorian, like the navigator', (tester) async {
-      await tester.pumpWidget(
-        _app(
-          settings: const AppSettings(calendar: CalendarKind.gregorian, language: Language.english),
-        ),
-      );
-      expect(_textOf(tester, 'today-primary'), 'Friday, September 4, 2026');
-      expect(_textOf(tester, 'period-label'), 'September 2026');
+    testWidgets('the headline date follows the chosen calendar', (tester) async {
+      // In Ethiopian mode the big date is Ethiopian and the Gregorian one sits underneath.
+      await tester.pumpWidget(_app());
+      expect(_textOf(tester, 'today-primary'), 'ነሐሴ 29, 2018');
+      expect(_textOf(tester, 'today-secondary'), startsWith('September 4, 2026'));
     });
 
-    testWidgets('the navigator shows the month in one calendar only', (tester) async {
+    testWidgets('in Gregorian mode the two swap, so nothing contradicts the navigator',
+        (tester) async {
+      await tester.pumpWidget(
+        _app(settings: const AppSettings(calendar: CalendarKind.gregorian)),
+      );
+      expect(_textOf(tester, 'today-primary'), 'September 4, 2026');
+      expect(_textOf(tester, 'today-secondary'), startsWith('ነሐሴ 29, 2018'));
+      expect(_textOf(tester, 'period-label'), 'ሴፕቴምበር 2026');
+    });
+
+    testWidgets('the navigator names the same stretch in both calendars', (tester) async {
       await tester.pumpWidget(_app());
+
       expect(_textOf(tester, 'period-label'), 'ነሐሴ 2018');
-      expect(find.byKey(const Key('period-counterpart-label')), findsNothing);
-      expect(find.textContaining('ኦገስት'), findsNothing);
+      // ነሐሴ 2018 runs 7 August - 5 September 2026.
+      expect(_textOf(tester, 'period-counterpart-label'), 'ኦገስት - ሴፕቴምበር 2026');
     });
 
     testWidgets('stepping forward rolls ነሐሴ into ጳጉሜን, then into መስከረም', (tester) async {
@@ -134,7 +142,7 @@ void main() {
       // derived from `todayProvider`, the two read the clock separately and could disagree.
       await tester.pumpWidget(_app(today: DateTime.utc(2027, 3, 10)));
 
-      expect(_textOf(tester, 'today-primary'), 'ረቡዕ, መጋቢት 1, 2019');
+      expect(_textOf(tester, 'today-primary'), 'መጋቢት 1, 2019');
       expect(_textOf(tester, 'period-label'), 'መጋቢት 2019');
     });
 
@@ -145,8 +153,9 @@ void main() {
       await tester.tap(find.byKey(const Key('toggle-calendar')));
       await tester.pump();
 
-      // ነሐሴ 2018 overlaps August 2026 by 25 days and September by 5, so August is shown.
+      // ነሐሴ 2018 overlaps August 2026 by 25 days and September by 5, so August is the counterpart.
       expect(_textOf(tester, 'period-label'), 'ኦገስት 2026');
+      expect(_textOf(tester, 'period-counterpart-label'), 'ሐምሌ - ነሐሴ 2018');
     });
 
     testWidgets('the language toggle switches the interface to English', (tester) async {
@@ -171,9 +180,8 @@ void main() {
       expect(find.text('ከባለፈው ወር 2% በታች'), findsOneWidget);
     });
 
-    testWidgets('asks the server for the month in view, and the one before on paging', (
-      tester,
-    ) async {
+    testWidgets('asks the server for the month in view, and the one before on paging',
+        (tester) async {
       final summary = FakeMonthlySummaryApi();
       await tester.pumpWidget(_app(summary: summary));
       await tester.pumpAndSettle();
@@ -184,7 +192,8 @@ void main() {
       expect(summary.requested.last, Period(CalendarKind.ethiopian, 2018, 11));
     });
 
-    testWidgets('the category card lists what the server returned, largest first', (tester) async {
+    testWidgets('the category card lists what the server returned, largest first',
+        (tester) async {
       await tester.pumpWidget(_app(settings: const AppSettings(language: Language.english)));
       await tester.pumpAndSettle();
 
@@ -197,13 +206,11 @@ void main() {
     });
 
     testWidgets('an empty month says so instead of drawing empty bars', (tester) async {
-      await tester.pumpWidget(
-        _app(
-          summary: FakeMonthlySummaryApi(
-            build: (period) => summaryOf(daily: List.filled(period.lengthInDays, 0)),
-          ),
+      await tester.pumpWidget(_app(
+        summary: FakeMonthlySummaryApi(
+          build: (period) => summaryOf(daily: List.filled(period.lengthInDays, 0)),
         ),
-      );
+      ));
       await tester.pumpAndSettle();
 
       expect(_textOf(tester, 'grand-total'), '0 ETB');
@@ -212,12 +219,10 @@ void main() {
 
     testWidgets('a failed load keeps the layout and offers a retry', (tester) async {
       var fail = true;
-      final summary = FakeMonthlySummaryApi(
-        build: (period) {
-          if (fail) throw const ApiException(message: 'Server unavailable', statusCode: 503);
-          return FakeMonthlySummaryApi.defaultSummary(period);
-        },
-      );
+      final summary = FakeMonthlySummaryApi(build: (period) {
+        if (fail) throw const ApiException(message: 'Server unavailable', statusCode: 503);
+        return FakeMonthlySummaryApi.defaultSummary(period);
+      });
       await tester.pumpWidget(_app(summary: summary));
       await tester.pumpAndSettle();
 
@@ -246,21 +251,18 @@ void main() {
       expect(_textOf(tester, 'budget-progress'), contains('15,000 ETB'));
     });
 
-    testWidgets('a budget left on the device by an older version moves to the account', (
-      tester,
-    ) async {
+    testWidgets('a budget left on the device by an older version moves to the account',
+        (tester) async {
       final budgets = FakeBudgetsApi();
       final store = InMemorySettingsStore(const AppSettings(monthlyBudgetMinor: 1500000));
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            todayProvider.overrideWithValue(_fixedToday),
-            settingsStoreProvider.overrideWithValue(store),
-            ...fakeApiOverrides(budgets: budgets),
-          ],
-          child: MaterialApp(theme: buildTheme(), home: const AppShell()),
-        ),
-      );
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          todayProvider.overrideWithValue(_fixedToday),
+          settingsStoreProvider.overrideWithValue(store),
+          ...fakeApiOverrides(budgets: budgets),
+        ],
+        child: MaterialApp(theme: buildTheme(), home: const AppShell()),
+      ));
       await tester.pumpAndSettle();
 
       expect(budgets.calls, ['set:overall:1500000']);
@@ -268,48 +270,34 @@ void main() {
       expect(_textOf(tester, 'budget-progress'), contains('15,000 ETB'));
     });
 
-    testWidgets('the legacy budget does not overwrite one the account already has', (tester) async {
+    testWidgets('the legacy budget does not overwrite one the account already has',
+        (tester) async {
       final budgets = FakeBudgetsApi({null: 900000});
-      await tester.pumpWidget(
-        _app(settings: const AppSettings(monthlyBudgetMinor: 1500000), budgets: budgets),
-      );
+      await tester.pumpWidget(_app(
+        settings: const AppSettings(monthlyBudgetMinor: 1500000),
+        budgets: budgets,
+      ));
       await tester.pumpAndSettle();
       expect(budgets.calls, isEmpty);
       expect(_textOf(tester, 'budget-progress'), contains('9,000 ETB'));
     });
 
     testWidgets('categories near or over their limit raise an alert', (tester) async {
-      await tester.pumpWidget(
-        _app(
-          settings: const AppSettings(language: Language.english),
-          summary: FakeMonthlySummaryApi(
-            build: (period) => summaryOf(
-              daily: List.filled(period.lengthInDays, 0),
-              dynamicMinor: 950000,
-              categories: [
-                spend(
-                  'c-food',
-                  'Food',
-                  null,
-                  '#E53935',
-                  'restaurant',
-                  dynamicMinor: 450000,
-                  budgetMinor: 500000,
-                ),
-                spend(
-                  'c-taxi',
-                  'Transport',
-                  null,
-                  '#1E88E5',
-                  'directions_bus',
-                  dynamicMinor: 500000,
-                  budgetMinor: 400000,
-                ),
-              ],
-            ),
+      await tester.pumpWidget(_app(
+        settings: const AppSettings(language: Language.english),
+        summary: FakeMonthlySummaryApi(
+          build: (period) => summaryOf(
+            daily: List.filled(period.lengthInDays, 0),
+            dynamicMinor: 950000,
+            categories: [
+              spend('c-food', 'Food', null, '#E53935', 'restaurant',
+                  dynamicMinor: 450000, budgetMinor: 500000),
+              spend('c-taxi', 'Transport', null, '#1E88E5', 'directions_bus',
+                  dynamicMinor: 500000, budgetMinor: 400000),
+            ],
           ),
         ),
-      );
+      ));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('budget-alerts')), findsOneWidget);
@@ -570,7 +558,8 @@ void main() {
   group('period arithmetic used by the UI', () {
     test('an Ethiopian period maps to the Gregorian month it shares most days with', () {
       final hamle = Period(CalendarKind.ethiopian, 2018, 11);
-      expect(hamle.asCalendar(CalendarKind.gregorian), Period(CalendarKind.gregorian, 2026, 7));
+      expect(hamle.asCalendar(CalendarKind.gregorian),
+          Period(CalendarKind.gregorian, 2026, 7));
       expect(hamle.overlapDays(Period(CalendarKind.gregorian, 2026, 7)), 24);
     });
   });
