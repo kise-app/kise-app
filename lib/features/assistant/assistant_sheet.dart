@@ -61,7 +61,9 @@ class AssistantButton extends ConsumerWidget {
     final status = ref.watch(assistantStatusProvider).valueOrNull;
     if (status == null || !status.enabled) return const SizedBox.shrink();
     final settings = ref.watch(settingsProvider);
-    final allowed = status.allowed;
+    // Open for a plan with any of the assistant, not only typed requests: a plan can offer voice
+    // notes or receipt scans alone.
+    final allowed = status.includesAny;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: FloatingActionButton.small(

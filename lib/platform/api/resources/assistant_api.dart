@@ -65,6 +65,11 @@ class AssistantStatusDto {
 
   UsageDto? usageOf(String kind) => usage[kind];
 
+  /// The plan includes some part of the assistant: typed requests, or receipt scans or voice
+  /// notes (even with this month's used up). What decides whether the assistant opens at all;
+  /// [allowed] alone is typed requests only.
+  bool get includesAny => allowed || usage.values.any((u) => u.included);
+
   factory AssistantStatusDto.fromJson(Map<String, Object?> json) => AssistantStatusDto(
     enabled: json['enabled'] as bool,
     allowed: (json['allowed'] as bool?) ?? false,

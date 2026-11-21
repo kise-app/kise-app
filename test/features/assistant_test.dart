@@ -352,6 +352,23 @@ void main() {
     expect(assistant.statusCalls, greaterThanOrEqualTo(2), reason: 'fetched afresh on open');
   });
 
+  testWidgets('a plan with voice notes but no typed requests still opens the assistant', (
+    tester,
+  ) async {
+    final assistant = FakeAssistantApi(
+      allowed: false,
+      usage: const {'voice': UsageDto(limit: 10, used: 0), 'receipt': UsageDto(limit: 0, used: 0)},
+    );
+    expect((await assistant.status()).includesAny, isTrue);
+    final none = FakeAssistantApi(
+      allowed: false,
+      usage: const {'voice': UsageDto(limit: 0, used: 0), 'receipt': UsageDto(limit: 0, used: 0)},
+    );
+    expect((await none.status()).includesAny, isFalse);
+    // An older server sends no usage: typed requests decide, as before.
+    expect((await FakeAssistantApi(allowed: true).status()).includesAny, isTrue);
+  });
+
   testWidgets('without microphone permission it says how to fix it', (tester) async {
     final recorder = FakeRecorder(allowed: false);
     final assistant = FakeAssistantApi();
@@ -559,6 +576,26 @@ void main() {
       await tester.tap(find.byKey(const Key('assistant-open')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('assistant-input')), findsOneWidget);
+    });
+
+    testWidgets('a plan with voice notes only is not locked, and opens the sheet', (tester) async {
+      await tester.pumpWidget(
+        screen(
+          FakeAssistantApi(
+            allowed: false,
+            usage: const {
+              'voice': UsageDto(limit: 10, used: 2),
+              'receipt': UsageDto(limit: 0, used: 0),
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
+      await tester.tap(find.byKey(const Key('assistant-open')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('assistant-mic')), findsOneWidget);
+      expect(find.byKey(const Key('upgrade-sheet')), findsNothing);
     });
 
     testWidgets('on Basic it shows a lock and explains Pro instead', (tester) async {
